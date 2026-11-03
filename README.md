@@ -4,7 +4,7 @@ MandauStack is a free, open-source local development environment for PHP and Lar
 
 Branding follows the supplied MandauStack reference: a red mandau/server emblem, lowercase wordmark, and the tagline “LOCAL DEVELOPMENT ENVIRONMENT.” The vector artwork in `assets/mandaustack-icon.svg` is a redraw based on that reference; replace it with the original vector master if one becomes available. The UI, generated app icons, and installer metadata use the same identity. Copyright: © 2026 MandauStack Contributors; application source is MIT licensed.
 
-**Status: 0.1.6 early preview.** This release links existing project folders, persists a project registry, detects PHP/Node.js/Composer/nginx already on the system, and provides a desktop interface and basic CLI. The desktop app can start and stop local PHP previews for linked projects. Managed downloads are available for Node.js and PHP on macOS Apple Silicon and Windows x64. A local HTTPS gateway can route linked `*.test` sites to running previews on a random loopback port, with a private per-user CA and valid per-site certificates. A reviewed hosts plan can be installed through an explicit macOS administrator authorization; Windows hosts integration is pending. **Browser-ready `https://project.test/` URLs are not available yet:** system certificate trust, port 443, and nginx are not installed. Version switching, databases, and other services are planned; do not use this version as a complete local stack.
+**Status: 0.1.7 early preview.** This release links existing project folders, persists a project registry, detects PHP/Node.js/Composer/nginx already on the system, and provides a desktop interface and basic CLI. The desktop app can start and stop local PHP previews for linked projects. Managed downloads are available for Node.js and PHP on macOS Apple Silicon and Windows x64. A local HTTPS gateway can route linked `*.test` sites to running previews on a random loopback port, with a private per-user CA and valid per-site certificates. A reviewed hosts plan can be installed through an explicit macOS administrator authorization; the macOS user Keychain can trust the local CA through a separate explicit action. Windows hosts and certificate trust integration are pending. **Browser-ready `https://project.test/` URLs are not available yet:** port 443 and nginx are not installed. Version switching, databases, and other services are planned; do not use this version as a complete local stack.
 
 ## Develop
 
@@ -42,7 +42,7 @@ This preview and gateway are intermediate development features, not the promised
 
 ### Local HTTPS gateway (developer test)
 
-The desktop app starts an HTTPS gateway bound only to `127.0.0.1` on an available high port. Its port and public CA certificate path appear in the desktop app. The CA private key and per-site keys are stored with restricted permissions under the user data directory's `certificates/` folder; the same CA is reused after restart, and site certificates are renewed before expiry. Requests are routed only when the TLS server name and HTTP Host match a linked project that has a running preview. System DNS is changed only by an explicit authorized macOS action; the system certificate trust store is not modified.
+The desktop app starts an HTTPS gateway bound only to `127.0.0.1` on an available high port. Its port and public CA certificate path appear in the desktop app. The CA private key and per-site keys are stored with restricted permissions under the user data directory's `certificates/` folder; the same CA is reused after restart, and site certificates are renewed before expiry. Requests are routed only when the TLS server name and HTTP Host match a linked project that has a running preview. System DNS is changed only by an explicit authorized macOS action; the user Keychain is changed only when you select **Trust local CA in user Keychain** or **Remove MandauStack CA trust**. The CA private key is never imported into Keychain.
 
 To test a running project from a terminal, replace the domain, port, and certificate path shown in the app:
 
@@ -51,6 +51,8 @@ curl --noproxy '*' --resolve project.test:PORT:127.0.0.1 --cacert "/path/to/Mand
 ```
 
 This checks the certificate and site routing without bypassing TLS validation. Do not use `--insecure` for the check. See [docs/local-https.md](docs/local-https.md) for the remaining OS integration steps.
+
+On macOS, **Trust local CA in user Keychain** checks whether this exact CA already exists, imports only its public certificate with SSL trust into the default user Keychain, checks a locally issued certificate using the OS trust verifier, and saves its SHA-256 fingerprint and Keychain location for recovery. It does not take ownership of a CA that was already installed or trusted elsewhere. **Remove MandauStack CA trust** acts only on the recorded fingerprint and Keychain, without removing projects or private keys. A locked Keychain may prompt you to unlock it. These actions have been tested with a simulated Keychain, not authorized on a real machine yet; if an operation fails, the app retains its recovery record where possible.
 
 **Review .test hosts plan** in the app or run `npm run cli -- hosts:plan` to inspect the mappings for all linked projects. The planner rejects existing mappings owned by other software and does not change the system hosts file. On macOS, **Install reviewed .test entries** asks for administrator authorization, rechecks the plan against the current file, makes a protected backup, and replaces only the managed block. **Restore previous hosts file** reverts the last operation if the file has not since changed. This UI path has not yet been exercised with real administrator authorization; its file operations were tested using isolated copies. The Windows button is not enabled until ACL-preserving replacement is tested.
 
@@ -73,7 +75,7 @@ The macOS ARM PHP artifact was tested by downloading it from the pinned GitHub r
 
 ## Safe version changes (design requirement)
 
-The UI will offer a project-level version selector with installed versions and compatibility information. Runtime switching is **not implemented in 0.1.6**. Before it is exposed, the engine must:
+The UI will offer a project-level version selector with installed versions and compatibility information. Runtime switching is **not implemented in 0.1.7**. Before it is exposed, the engine must:
 
 1. Download into a versioned, isolated directory, verify checksum/signature and executable, then leave the currently active version untouched.
 2. Validate project configuration, required PHP extensions or service compatibility and port availability before switching. PHP CLI and web server must resolve to the same selected version.

@@ -48,7 +48,11 @@ export interface AppInfo {
   platform: string;
   gateway: { port: number; caPath: string } | null;
   gatewayError: string | null;
+  caTrust: CaTrustStatus | null;
+  caTrustError: string | null;
 }
+
+export interface CaTrustStatus { trusted: boolean; installedByMandauStack: boolean }
 
 export interface PreviewStatus {
   siteId: string;
@@ -74,6 +78,8 @@ export interface DesktopApi {
   previewHosts(): Promise<HostsPlanSummary>;
   applyHosts(expectedSha256: string): Promise<HostsPlanSummary>;
   restoreHosts(): Promise<HostsPlanSummary>;
+  installCaTrust(): Promise<CaTrustStatus>;
+  removeCaTrust(): Promise<CaTrustStatus>;
   detectRuntimes(): Promise<RuntimeStatus[]>;
   listManagedRuntimes(): Promise<RuntimeOption[]>;
   installRuntime(id: string): Promise<RuntimeOption[]>;

@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { dataDirectory } from '../core/paths';
 import { planHosts, systemHostsPath } from '../core/hosts';
 import { HttpsGateway } from '../core/https-gateway';
+import { MacCaTrust } from '../core/mac-ca-trust';
 import { authorizedHostsOperation } from '../core/mac-hosts';
 import { PreviewManager } from '../core/previews';
 import { availableArtifacts, RuntimeInstaller } from '../core/runtime-installer';
@@ -23,6 +24,8 @@ const previews = new PreviewManager(undefined, async () => {
   return managed ? { binary: managed.binary, mode: php?.archive === 'binary' ? 'frankenphp' as const : 'php' as const } : findPhpBinary();
 });
 const gateway = new HttpsGateway(dataDirectory(), () => store.list(), previews);
+let caTrust: MacCaTrust | null = null;
+let updatingCaTrust = false;
 let gatewayError: string | null = null;
 const hostsStatePath = path.join(dataDirectory(), 'hosts-installation.json');
 let updatingHosts = false;
@@ -97,12 +100,35 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
-  try { await gateway.start(); }
+  try {
+    const status = await gateway.start();
+    if (process.platform === 'darwin') caTrust = new MacCaTrust(status.caPath, dataDirectory());
+  }
   catch (error) { gatewayError = (error as Error).message; }
-  ipcMain.handle('app:info', () => ({
-    version: app.getVersion(), dataDirectory: dataDirectory(), platform: process.platform,
-    gateway: gateway.getStatus(), gatewayError
-  }));
+  ipcMain.handle('app:info', async () => {
+    let caTrustStatus = null;
+    let caTrustError = null;
+    if (caTrust) {
+      try { caTrustStatus = await caTrust.status(); }
+      catch (error) { caTrustError = (error as Error).message; }
+    }
+    return { version: app.getVersion(), dataDirectory: dataDirectory(), platform: process.platform,
+      gateway: gateway.getStatus(), gatewayError, caTrust: caTrustStatus, caTrustError };
+  });
+  ipcMain.handle('ca:installTrust', async () => {
+    if (!caTrust) throw new Error('Local CA trust is available only while the macOS HTTPS gateway is running.');
+    if (updatingCaTrust) throw new Error('A CA trust operation is already in progress.');
+    updatingCaTrust = true;
+    try { return await caTrust.install(); }
+    finally { updatingCaTrust = false; }
+  });
+  ipcMain.handle('ca:removeTrust', async () => {
+    if (!caTrust) throw new Error('Local CA trust is available only while the macOS HTTPS gateway is running.');
+    if (updatingCaTrust) throw new Error('A CA trust operation is already in progress.');
+    updatingCaTrust = true;
+    try { return await caTrust.remove(); }
+    finally { updatingCaTrust = false; }
+  });
   ipcMain.handle('sites:list', () => store.list());
   ipcMain.handle('sites:chooseDirectory', async () => {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
