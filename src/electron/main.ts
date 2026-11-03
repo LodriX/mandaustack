@@ -1,9 +1,11 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { dataDirectory } from '../core/paths';
 import { planHosts, systemHostsPath } from '../core/hosts';
 import { HttpsGateway } from '../core/https-gateway';
+import { authorizedHostsOperation } from '../core/mac-hosts';
 import { PreviewManager } from '../core/previews';
 import { availableArtifacts, RuntimeInstaller } from '../core/runtime-installer';
 import { detectRuntimes, findPhpBinary } from '../core/runtimes';
@@ -22,6 +24,35 @@ const previews = new PreviewManager(undefined, async () => {
 });
 const gateway = new HttpsGateway(dataDirectory(), () => store.list(), previews);
 let gatewayError: string | null = null;
+const hostsStatePath = path.join(dataDirectory(), 'hosts-installation.json');
+let updatingHosts = false;
+
+function savedHostsOperation(): { backupPath: string; appliedSha256: string } | null {
+  if (!fs.existsSync(hostsStatePath)) return null;
+  const saved: unknown = JSON.parse(fs.readFileSync(hostsStatePath, 'utf8'));
+  if (!saved || typeof saved !== 'object' || !('backupPath' in saved) || !('appliedSha256' in saved) ||
+    typeof saved.backupPath !== 'string' || typeof saved.appliedSha256 !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(saved.appliedSha256)) throw new Error('Saved hosts recovery record is damaged; it was preserved.');
+  return { backupPath: saved.backupPath, appliedSha256: saved.appliedSha256 };
+}
+
+function saveHostsOperation(value: { backupPath: string; appliedSha256: string }): void {
+  fs.mkdirSync(path.dirname(hostsStatePath), { recursive: true, mode: 0o700 });
+  const temporary = `${hostsStatePath}.${randomUUID()}.tmp`;
+  try {
+    fs.writeFileSync(temporary, JSON.stringify(value) + '\n', { flag: 'wx', mode: 0o600 });
+    fs.renameSync(temporary, hostsStatePath);
+  } finally { fs.rmSync(temporary, { force: true }); }
+}
+
+function hostsPreview() {
+  const file = systemHostsPath();
+  const plan = planHosts(fs.readFileSync(file, 'utf8'), store.list().map(site => site.domain));
+  return { file, added: plan.added, removed: plan.removed, changed: plan.changed,
+    originalSha256: plan.originalSha256, restoreAvailable: Boolean(savedHostsOperation()) };
+}
+
+function macHelperPath(): string { return path.join(app.getAppPath(), 'dist-electron', 'hosts-helper.js'); }
 
 async function managedRuntimes(): Promise<RuntimeOption[]> {
   return Promise.all(artifacts.map(async artifact => ({
@@ -69,7 +100,8 @@ app.whenReady().then(async () => {
   try { await gateway.start(); }
   catch (error) { gatewayError = (error as Error).message; }
   ipcMain.handle('app:info', () => ({
-    version: app.getVersion(), dataDirectory: dataDirectory(), gateway: gateway.getStatus(), gatewayError
+    version: app.getVersion(), dataDirectory: dataDirectory(), platform: process.platform,
+    gateway: gateway.getStatus(), gatewayError
   }));
   ipcMain.handle('sites:list', () => store.list());
   ipcMain.handle('sites:chooseDirectory', async () => {
@@ -92,10 +124,32 @@ app.whenReady().then(async () => {
     const error = await shell.openPath(location);
     if (error) throw new Error(error);
   });
-  ipcMain.handle('sites:previewHosts', () => {
-    const file = systemHostsPath();
-    const plan = planHosts(fs.readFileSync(file, 'utf8'), store.list().map(site => site.domain));
-    return { file, added: plan.added, removed: plan.removed, changed: plan.changed, originalSha256: plan.originalSha256 };
+  ipcMain.handle('sites:previewHosts', hostsPreview);
+  ipcMain.handle('sites:applyHosts', async (_event, expected: unknown) => {
+    if (process.platform !== 'darwin') throw new Error('Installing .test hosts entries is not available on Windows yet.');
+    const preview = hostsPreview();
+    if (typeof expected !== 'string' || expected !== preview.originalSha256) throw new Error('Hosts plan changed; review it again before installing.');
+    if (!preview.changed) throw new Error('The hosts file is already up to date.');
+    if (updatingHosts) throw new Error('A hosts operation is already in progress.');
+    updatingHosts = true;
+    try {
+      const domains = store.list().map(site => site.domain);
+      const result = await authorizedHostsOperation(process.execPath, macHelperPath(), ['apply', expected, ...domains]);
+      if (result.backupPath) saveHostsOperation({ backupPath: result.backupPath, appliedSha256: result.appliedSha256 });
+      return hostsPreview();
+    } finally { updatingHosts = false; }
+  });
+  ipcMain.handle('sites:restoreHosts', async () => {
+    if (process.platform !== 'darwin') throw new Error('Hosts recovery is not available on Windows yet.');
+    const saved = savedHostsOperation();
+    if (!saved) throw new Error('No previous MandauStack hosts update was saved.');
+    if (updatingHosts) throw new Error('A hosts operation is already in progress.');
+    updatingHosts = true;
+    try {
+      await authorizedHostsOperation(process.execPath, macHelperPath(), ['restore', saved.appliedSha256, saved.backupPath]);
+      fs.rmSync(hostsStatePath);
+      return hostsPreview();
+    } finally { updatingHosts = false; }
   });
   ipcMain.handle('runtimes:detect', detectRuntimes);
   ipcMain.handle('runtimes:managed', managedRuntimes);

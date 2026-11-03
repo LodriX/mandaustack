@@ -38,7 +38,7 @@ async function main(): Promise<void> {
       return;
     }
     default:
-      console.log('MandauStack 0.1.5\n\nCommands:\n  sites:list\n  sites:link <directory>\n  sites:unlink <domain>\n  runtimes:list\n  hosts:plan');
+      console.log('MandauStack 0.1.6\n\nCommands:\n  sites:list\n  sites:link <directory>\n  sites:unlink <domain>\n  runtimes:list\n  hosts:plan');
   }
 }
 

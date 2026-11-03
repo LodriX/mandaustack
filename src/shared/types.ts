@@ -45,6 +45,7 @@ export interface RuntimeOption {
 export interface AppInfo {
   version: string;
   dataDirectory: string;
+  platform: string;
   gateway: { port: number; caPath: string } | null;
   gatewayError: string | null;
 }
@@ -60,6 +61,7 @@ export interface HostsPlanSummary {
   removed: string[];
   changed: boolean;
   originalSha256: string;
+  restoreAvailable: boolean;
 }
 
 export interface DesktopApi {
@@ -70,6 +72,8 @@ export interface DesktopApi {
   removeSite(id: string): Promise<void>;
   openDirectory(path: string): Promise<void>;
   previewHosts(): Promise<HostsPlanSummary>;
+  applyHosts(expectedSha256: string): Promise<HostsPlanSummary>;
+  restoreHosts(): Promise<HostsPlanSummary>;
   detectRuntimes(): Promise<RuntimeStatus[]>;
   listManagedRuntimes(): Promise<RuntimeOption[]>;
   installRuntime(id: string): Promise<RuntimeOption[]>;

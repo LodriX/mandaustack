@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src/core/**/*.ts", "src/electron/**/*.ts", "src/shared/**/*.ts", "src/cli.ts"]
+  "include": ["src/core/**/*.ts", "src/electron/**/*.ts", "src/shared/**/*.ts", "src/cli.ts", "src/hosts-helper.ts"]
 }

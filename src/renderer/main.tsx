@@ -20,6 +20,7 @@ function App(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [busySite, setBusySite] = useState<string | null>(null);
   const [busyRuntime, setBusyRuntime] = useState<string | null>(null);
+  const [busyHosts, setBusyHosts] = useState(false);
 
   useEffect(() => {
     void Promise.all([window.mandaustack.listSites(), window.mandaustack.detectRuntimes(), window.mandaustack.getInfo(), window.mandaustack.listPreviews(), window.mandaustack.listManagedRuntimes()])
@@ -85,6 +86,15 @@ function App(): React.JSX.Element {
     finally { setBusyRuntime(null); }
   }
 
+  async function changeHosts(restore: boolean): Promise<void> {
+    setBusyHosts(true);
+    setError('');
+    try {
+      setHostsPlan(restore ? await window.mandaustack.restoreHosts() : await window.mandaustack.applyHosts(hostsPlan!.originalSha256));
+    } catch (reason) { showError(reason); }
+    finally { setBusyHosts(false); }
+  }
+
   const filtered = sites.filter(site => `${site.name} ${site.path} ${site.domain}`.toLowerCase().includes(search.toLowerCase()));
 
   return <div className="layout">
@@ -95,12 +105,12 @@ function App(): React.JSX.Element {
       <div className="nav-heading second">ENVIRONMENT</div>
       <div className="nav-item">⌘ <span>Local runtimes</span></div>
       <div className="nav-item muted">◈ <span>Services · coming later</span></div>
-      <div className="sidebar-bottom"><div><span className="status-dot"/> Local workspace <small>v{info?.version || '0.1.5'}</small></div><p>© {new Date().getFullYear()} MandauStack Contributors<br/>MIT License</p></div>
+      <div className="sidebar-bottom"><div><span className="status-dot"/> Local workspace <small>v{info?.version || '0.1.6'}</small></div><p>© {new Date().getFullYear()} MandauStack Contributors<br/>MIT License</p></div>
     </aside>
     <main>
       <header><div><span className="eyebrow">YOUR DEVELOPMENT SPACE</span><h1>Projects</h1><p>One place for your local development projects.</p></div><button className="primary" onClick={() => void linkSite()} disabled={busy}>+ Link existing project</button></header>
       {error && <div className="alert" role="alert">{error}<button aria-label="Dismiss" onClick={() => setError('')}>×</button></div>}
-      <div className="notice"><span>◉</span><div><strong>Local PHP preview and HTTPS gateway</strong><p>Start a linked PHP/Laravel project to preview it. {info?.gateway ? `HTTPS routing is running on 127.0.0.1:${info.gateway.port}; local DNS and certificate trust are not installed yet. CA certificate: ${info.gateway.caPath}` : `HTTPS gateway unavailable${info?.gatewayError ? `: ${info.gatewayError}` : '.'}`} Browser previews still open on HTTP until trusted .test setup is ready.</p><button className="secondary" onClick={() => void window.mandaustack.previewHosts().then(setHostsPlan).catch(showError)}>Review .test hosts plan</button>{hostsPlan && <p role="status">{hostsPlan.changed ? `Proposed in ${hostsPlan.file}: ${hostsPlan.added.map(domain => `+ ${domain}`).join(', ') || 'no additions'}; ${hostsPlan.removed.map(domain => `- ${domain}`).join(', ') || 'no removals'}.` : `${hostsPlan.file}: no changes needed.`} Preview only; no system changes were made.</p>}</div></div>
+      <div className="notice"><span>◉</span><div><strong>Local PHP preview and HTTPS gateway</strong><p>Start a linked PHP/Laravel project to preview it. {info?.gateway ? `HTTPS routing is running on 127.0.0.1:${info.gateway.port}; certificate trust and port 443 are not installed yet. CA certificate: ${info.gateway.caPath}` : `HTTPS gateway unavailable${info?.gatewayError ? `: ${info.gatewayError}` : '.'}`} Browser previews still open on HTTP until trusted .test setup is ready.</p><button className="secondary" disabled={busyHosts} onClick={() => void window.mandaustack.previewHosts().then(setHostsPlan).catch(showError)}>Review .test hosts plan</button>{hostsPlan && <p role="status">{hostsPlan.changed ? `Proposed in ${hostsPlan.file}: ${hostsPlan.added.map(domain => `+ ${domain}`).join(', ') || 'no additions'}; ${hostsPlan.removed.map(domain => `- ${domain}`).join(', ') || 'no removals'}.` : `${hostsPlan.file}: no changes needed.`} {info?.platform === 'darwin' ? 'Apply requires macOS administrator authorization.' : 'Preview only; Windows installation is not yet supported.'}</p>}{hostsPlan?.changed && info?.platform === 'darwin' && <button className="secondary" disabled={busyHosts} onClick={() => void changeHosts(false)}>{busyHosts ? 'Updating…' : 'Install reviewed .test entries'}</button>}{hostsPlan?.restoreAvailable && info?.platform === 'darwin' && <button className="secondary" disabled={busyHosts} onClick={() => void changeHosts(true)}>Restore previous hosts file</button>}</div></div>
       <section className="section-heading"><div><h2>Your projects</h2><p>{sites.length} linked {sites.length === 1 ? 'project' : 'projects'}</p></div><input aria-label="Search projects" placeholder="Search projects…" value={search} onChange={event => setSearch(event.target.value)}/></section>
       {filtered.length ? <div className="site-list">{filtered.map(site => {
         const preview = previews.find(item => item.siteId === site.id);
