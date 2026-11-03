@@ -4,7 +4,7 @@ MandauStack is a free, open-source local development environment for PHP and Lar
 
 Branding follows the supplied MandauStack reference: a red mandau/server emblem, lowercase wordmark, and the tagline “LOCAL DEVELOPMENT ENVIRONMENT.” The vector artwork in `assets/mandaustack-icon.svg` is a redraw based on that reference; replace it with the original vector master if one becomes available. The UI, generated app icons, and installer metadata use the same identity. Copyright: © 2026 MandauStack Contributors; application source is MIT licensed.
 
-**Status: 0.1.4 early preview.** This release links existing project folders, persists a project registry, detects PHP/Node.js/Composer/nginx already on the system, and provides a desktop interface and basic CLI. The desktop app can start and stop local PHP previews for linked projects. Managed downloads are available for Node.js and PHP on macOS Apple Silicon and Windows x64. A local HTTPS gateway can route linked `*.test` sites to running previews on a random loopback port, with a private per-user CA and valid per-site certificates. **Browser-ready `.test` URLs are not available yet:** DNS, system certificate trust, port 443, and nginx are not installed. Version switching, databases, and other services are planned; do not use this version as a complete local stack.
+**Status: 0.1.5 early preview.** This release links existing project folders, persists a project registry, detects PHP/Node.js/Composer/nginx already on the system, and provides a desktop interface and basic CLI. The desktop app can start and stop local PHP previews for linked projects. Managed downloads are available for Node.js and PHP on macOS Apple Silicon and Windows x64. A local HTTPS gateway can route linked `*.test` sites to running previews on a random loopback port, with a private per-user CA and valid per-site certificates. A read-only hosts plan shows DNS entries needed for linked projects. **Browser-ready `.test` URLs are not available yet:** DNS, system certificate trust, port 443, and nginx are not installed. Version switching, databases, and other services are planned; do not use this version as a complete local stack.
 
 ## Develop
 
@@ -29,6 +29,7 @@ npm run cli -- sites:list
 npm run cli -- sites:link /path/to/project
 npm run cli -- sites:unlink project.test
 npm run cli -- runtimes:list
+npm run cli -- hosts:plan
 ```
 
 `sites:unlink` removes only the registration; project files are never deleted. The desktop and CLI share the same per-user registry: `~/Library/Application Support/MandauStack` on macOS or `%APPDATA%\MandauStack` on Windows. Packages can be built with `npm run package:mac` on macOS and `npm run package:win` on Windows; packages are not yet signed or released.
@@ -51,6 +52,8 @@ curl --noproxy '*' --resolve project.test:PORT:127.0.0.1 --cacert "/path/to/Mand
 
 This checks the certificate and site routing without bypassing TLS validation. Do not use `--insecure` for the check. See [docs/local-https.md](docs/local-https.md) for the remaining OS integration steps.
 
+**Review .test hosts plan** in the app or run `npm run cli -- hosts:plan` to inspect the mappings for all linked projects. The planner rejects existing mappings owned by other software and does not change the system hosts file. The internal apply/restore engine is tested against isolated file copies; an authorized OS installer has not yet been connected to it.
+
 ### Managed runtime downloads
 
 In **Managed runtimes**, select **Install** for a pinned artifact. MandauStack downloads it on demand over HTTPS, validates a pinned SHA-256 hash, checks the executable version, and installs into an isolated `runtimes/` directory inside its user data directory. An interrupted or mismatched download does not replace an existing runtime. Source URL and license are visible in the application. The current Node.js artifact is 24.22.2 on macOS ARM and Windows x64. PHP 8.5.12 comes from the official Windows PHP archive on Windows x64 and from the official FrankenPHP 1.13.4 standalone release on macOS ARM; the latter contains PHP and a web server, and its required Laravel extensions are checked during installation. These exact versions must be updated deliberately when upstream patches are released.
@@ -70,7 +73,7 @@ The macOS ARM PHP artifact was tested by downloading it from the pinned GitHub r
 
 ## Safe version changes (design requirement)
 
-The UI will offer a project-level version selector with installed versions and compatibility information. Runtime switching is **not implemented in 0.1.4**. Before it is exposed, the engine must:
+The UI will offer a project-level version selector with installed versions and compatibility information. Runtime switching is **not implemented in 0.1.5**. Before it is exposed, the engine must:
 
 1. Download into a versioned, isolated directory, verify checksum/signature and executable, then leave the currently active version untouched.
 2. Validate project configuration, required PHP extensions or service compatibility and port availability before switching. PHP CLI and web server must resolve to the same selected version.

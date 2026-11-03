@@ -54,6 +54,14 @@ export interface PreviewStatus {
   url: string;
 }
 
+export interface HostsPlanSummary {
+  file: string;
+  added: string[];
+  removed: string[];
+  changed: boolean;
+  originalSha256: string;
+}
+
 export interface DesktopApi {
   getInfo(): Promise<AppInfo>;
   listSites(): Promise<Site[]>;
@@ -61,6 +69,7 @@ export interface DesktopApi {
   addSite(path: string): Promise<Site>;
   removeSite(id: string): Promise<void>;
   openDirectory(path: string): Promise<void>;
+  previewHosts(): Promise<HostsPlanSummary>;
   detectRuntimes(): Promise<RuntimeStatus[]>;
   listManagedRuntimes(): Promise<RuntimeOption[]>;
   installRuntime(id: string): Promise<RuntimeOption[]>;

@@ -1,6 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
 import { dataDirectory } from '../core/paths';
+import { planHosts, systemHostsPath } from '../core/hosts';
 import { HttpsGateway } from '../core/https-gateway';
 import { PreviewManager } from '../core/previews';
 import { availableArtifacts, RuntimeInstaller } from '../core/runtime-installer';
@@ -89,6 +91,11 @@ app.whenReady().then(async () => {
     }
     const error = await shell.openPath(location);
     if (error) throw new Error(error);
+  });
+  ipcMain.handle('sites:previewHosts', () => {
+    const file = systemHostsPath();
+    const plan = planHosts(fs.readFileSync(file, 'utf8'), store.list().map(site => site.domain));
+    return { file, added: plan.added, removed: plan.removed, changed: plan.changed, originalSha256: plan.originalSha256 };
   });
   ipcMain.handle('runtimes:detect', detectRuntimes);
   ipcMain.handle('runtimes:managed', managedRuntimes);

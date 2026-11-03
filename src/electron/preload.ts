@@ -8,6 +8,7 @@ const api: DesktopApi = {
   addSite: location => ipcRenderer.invoke('sites:add', location),
   removeSite: id => ipcRenderer.invoke('sites:remove', id),
   openDirectory: location => ipcRenderer.invoke('sites:openDirectory', location),
+  previewHosts: () => ipcRenderer.invoke('sites:previewHosts'),
   detectRuntimes: () => ipcRenderer.invoke('runtimes:detect'),
   listManagedRuntimes: () => ipcRenderer.invoke('runtimes:managed'),
   installRuntime: id => ipcRenderer.invoke('runtimes:install', id),

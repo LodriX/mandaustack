@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { AppInfo, DesktopApi, PreviewStatus, RuntimeOption, RuntimeStatus, Site } from '../shared/types';
+import type { AppInfo, DesktopApi, HostsPlanSummary, PreviewStatus, RuntimeOption, RuntimeStatus, Site } from '../shared/types';
 import brandIcon from '../../assets/mandaustack-icon.svg';
 import './style.css';
 
@@ -14,6 +14,7 @@ function App(): React.JSX.Element {
   const [managedRuntimes, setManagedRuntimes] = useState<RuntimeOption[]>([]);
   const [previews, setPreviews] = useState<PreviewStatus[]>([]);
   const [info, setInfo] = useState<AppInfo | null>(null);
+  const [hostsPlan, setHostsPlan] = useState<HostsPlanSummary | null>(null);
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -47,6 +48,7 @@ function App(): React.JSX.Element {
       if (location) {
         await window.mandaustack.addSite(location);
         setSites(await window.mandaustack.listSites());
+        setHostsPlan(null);
       }
     } catch (reason) { showError(reason); }
     finally { setBusy(false); }
@@ -59,6 +61,7 @@ function App(): React.JSX.Element {
       await window.mandaustack.removeSite(site.id);
       setSites(await window.mandaustack.listSites());
       setPreviews(await window.mandaustack.listPreviews());
+      setHostsPlan(null);
     } catch (reason) { showError(reason); }
   }
 
@@ -92,12 +95,12 @@ function App(): React.JSX.Element {
       <div className="nav-heading second">ENVIRONMENT</div>
       <div className="nav-item">⌘ <span>Local runtimes</span></div>
       <div className="nav-item muted">◈ <span>Services · coming later</span></div>
-      <div className="sidebar-bottom"><div><span className="status-dot"/> Local workspace <small>v{info?.version || '0.1.4'}</small></div><p>© {new Date().getFullYear()} MandauStack Contributors<br/>MIT License</p></div>
+      <div className="sidebar-bottom"><div><span className="status-dot"/> Local workspace <small>v{info?.version || '0.1.5'}</small></div><p>© {new Date().getFullYear()} MandauStack Contributors<br/>MIT License</p></div>
     </aside>
     <main>
       <header><div><span className="eyebrow">YOUR DEVELOPMENT SPACE</span><h1>Projects</h1><p>One place for your local development projects.</p></div><button className="primary" onClick={() => void linkSite()} disabled={busy}>+ Link existing project</button></header>
       {error && <div className="alert" role="alert">{error}<button aria-label="Dismiss" onClick={() => setError('')}>×</button></div>}
-      <div className="notice"><span>◉</span><div><strong>Local PHP preview and HTTPS gateway</strong><p>Start a linked PHP/Laravel project to preview it. {info?.gateway ? `HTTPS routing is running on 127.0.0.1:${info.gateway.port}; local DNS and certificate trust are not installed yet. CA certificate: ${info.gateway.caPath}` : `HTTPS gateway unavailable${info?.gatewayError ? `: ${info.gatewayError}` : '.'}`} Browser previews still open on HTTP until trusted .test setup is ready.</p></div></div>
+      <div className="notice"><span>◉</span><div><strong>Local PHP preview and HTTPS gateway</strong><p>Start a linked PHP/Laravel project to preview it. {info?.gateway ? `HTTPS routing is running on 127.0.0.1:${info.gateway.port}; local DNS and certificate trust are not installed yet. CA certificate: ${info.gateway.caPath}` : `HTTPS gateway unavailable${info?.gatewayError ? `: ${info.gatewayError}` : '.'}`} Browser previews still open on HTTP until trusted .test setup is ready.</p><button className="secondary" onClick={() => void window.mandaustack.previewHosts().then(setHostsPlan).catch(showError)}>Review .test hosts plan</button>{hostsPlan && <p role="status">{hostsPlan.changed ? `Proposed in ${hostsPlan.file}: ${hostsPlan.added.map(domain => `+ ${domain}`).join(', ') || 'no additions'}; ${hostsPlan.removed.map(domain => `- ${domain}`).join(', ') || 'no removals'}.` : `${hostsPlan.file}: no changes needed.`} Preview only; no system changes were made.</p>}</div></div>
       <section className="section-heading"><div><h2>Your projects</h2><p>{sites.length} linked {sites.length === 1 ? 'project' : 'projects'}</p></div><input aria-label="Search projects" placeholder="Search projects…" value={search} onChange={event => setSearch(event.target.value)}/></section>
       {filtered.length ? <div className="site-list">{filtered.map(site => {
         const preview = previews.find(item => item.siteId === site.id);

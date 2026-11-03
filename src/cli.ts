@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import fs from 'node:fs';
+import { planHosts, systemHostsPath } from './core/hosts';
 import { dataDirectory } from './core/paths';
 import { detectRuntimes } from './core/runtimes';
 import { SiteStore } from './core/sites';
@@ -13,7 +15,7 @@ async function main(): Promise<void> {
       return;
     case 'sites:link':
       if (!argument) throw new Error('Usage: mandaustack sites:link <directory>');
-      console.log(`Linked ${store.add(argument).domain} (routing is planned for a later release)`);
+      console.log(`Linked ${store.add(argument).domain} (start a preview for HTTPS gateway routing)`);
       return;
     case 'sites:unlink': {
       if (!argument) throw new Error('Usage: mandaustack sites:unlink <domain>');
@@ -26,8 +28,17 @@ async function main(): Promise<void> {
     case 'runtimes:list':
       for (const runtime of await detectRuntimes()) console.log(`${runtime.name}\t${runtime.version || 'Not detected'}`);
       return;
+    case 'hosts:plan': {
+      const file = systemHostsPath();
+      const plan = planHosts(fs.readFileSync(file, 'utf8'), store.list().map(site => site.domain));
+      console.log(`Hosts file: ${file}\nCurrent SHA-256: ${plan.originalSha256}`);
+      for (const domain of plan.added) console.log(`+ 127.0.0.1 ${domain}`);
+      for (const domain of plan.removed) console.log(`- 127.0.0.1 ${domain}`);
+      console.log(plan.changed ? 'Plan only; system hosts were not modified.' : 'Already up to date; system hosts were not modified.');
+      return;
+    }
     default:
-      console.log('MandauStack 0.1.0\n\nCommands:\n  sites:list\n  sites:link <directory>\n  sites:unlink <domain>\n  runtimes:list');
+      console.log('MandauStack 0.1.5\n\nCommands:\n  sites:list\n  sites:link <directory>\n  sites:unlink <domain>\n  runtimes:list\n  hosts:plan');
   }
 }
 
