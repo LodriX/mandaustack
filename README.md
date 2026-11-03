@@ -22,6 +22,8 @@ npm run build
 npm test
 ```
 
+Agent contributors should read [AGENTS.md](AGENTS.md) and the live handoff in [docs/progress.md](docs/progress.md) before changing behavior.
+
 Basic CLI from the source checkout:
 
 ```sh
