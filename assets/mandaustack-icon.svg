@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">MandauStack — mandau and server stack</title>
+  <defs>
+    <linearGradient id="red" x1="0" x2="1" y2="1">
+      <stop stop-color="#c90019"/>
+      <stop offset="1" stop-color="#dd001b"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="496" height="496" rx="92" fill="url(#red)"/>
+  <!-- A stylized mandau above three server units, based on the supplied brand reference. -->
+  <g fill="#fff">
+    <path d="M39 176c28-11 54-15 87-14v29c-25-3-44-1-57 7l-12 13c-10-8-16-19-18-35Z"/>
+    <circle cx="65" cy="181" r="5" fill="#c90019"/>
+    <path d="M137 150c-10 6-16 15-17 26v38h10c8 0 14-6 14-14v-53Z"/>
+    <path d="M155 172h304c-15 26-51 52-97 57-41 5-127-1-207-11v-46Zm22 15v19c73 9 142 14 181 10 29-3 53-14 68-29H177Z" fill-rule="evenodd"/>
+  </g>
+  <g fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M193 195c14-14 29-11 28 0-1 8-13 6-13-1m18 10c18-24 38-20 39-5 0 10-15 13-18 2m23 8c20-23 43-18 43-3 0 12-17 12-19 2m27 2c16-21 39-17 41-2 2 11-14 17-18 5"/>
+  </g>
+  <g fill="#fff">
+    <rect x="150" y="251" width="220" height="50" rx="9"/>
+    <rect x="150" y="314" width="220" height="50" rx="9"/>
+    <rect x="150" y="377" width="220" height="50" rx="9"/>
+  </g>
+  <g fill="#c90019">
+    <rect x="293" y="271" width="64" height="10" rx="2"/>
+    <rect x="293" y="334" width="64" height="10" rx="2"/>
+    <rect x="293" y="397" width="64" height="10" rx="2"/>
+  </g>
+</svg>

@@ -1,0 +1,67 @@
+# MandauStack
+
+MandauStack is a free, open-source local development environment for PHP and Laravel on macOS and Windows. It is developed with an AI-driven workflow; code, dependencies, and releases require review and testing. No account, license key, paid tier, advertisements, or upgrade prompts are required.
+
+Branding follows the supplied MandauStack reference: a red mandau/server emblem, lowercase wordmark, and the tagline “LOCAL DEVELOPMENT ENVIRONMENT.” The vector artwork in `assets/mandaustack-icon.svg` is a redraw based on that reference; replace it with the original vector master if one becomes available. The UI, generated app icons, and installer metadata use the same identity. Copyright: © 2026 MandauStack Contributors; application source is MIT licensed.
+
+**Status: 0.1.2 early preview.** This release links existing project folders, persists a project registry, detects PHP/Node.js/Composer/nginx already on the system, and provides a desktop interface and basic CLI. The desktop app can start and stop local PHP previews for linked projects. Managed downloads are available for Node.js on macOS Apple Silicon and Windows x64, plus PHP on Windows x64. A linked `*.test` name is **not served yet**. Managed PHP on macOS, version switching, DNS, HTTPS, databases, and other services are planned; do not use this version as a complete local stack.
+
+## Develop
+
+Requirements: Node.js and npm. On macOS, the eventual release target is macOS 14+ Apple Silicon; on Windows, Windows 10+ x64. The desktop foundation has not yet been verified on a Windows machine.
+
+```sh
+npm install
+npm run dev
+```
+
+Build and test:
+
+```sh
+npm run build
+npm test
+```
+
+Basic CLI from the source checkout:
+
+```sh
+npm run cli -- sites:list
+npm run cli -- sites:link /path/to/project
+npm run cli -- sites:unlink project.test
+npm run cli -- runtimes:list
+```
+
+`sites:unlink` removes only the registration; project files are never deleted. The desktop and CLI share the same per-user registry: `~/Library/Application Support/MandauStack` on macOS or `%APPDATA%\MandauStack` on Windows. Packages can be built with `npm run package:mac` on macOS and `npm run package:win` on Windows; packages are not yet signed or released.
+
+### Local preview
+
+With PHP already installed on your system, link a project containing `public/index.php` (Laravel), `index.php`, or `index.html`, then select **Start preview**. The app checks PHP on PATH and common Homebrew paths on macOS. It starts a PHP development server bound to `127.0.0.1` on a free port. Select **Open in browser** to visit its actual URL; **Stop** or quitting the app ends the process. Laravel's `public/` directory is served instead of the project root, so files outside `public/` are not exposed. The preview address changes after a restart, and projects are not started automatically. The CLI currently manages registrations only, not running previews.
+
+This preview is an intermediate development feature, not the promised nginx/HTTPS/`.test` service. PHP's built-in server is intended for local use only. To keep a project running without this desktop window, a persistent managed service will be needed in a future version.
+
+### Managed runtime downloads
+
+In **Managed runtimes**, select **Install** for a pinned official artifact. MandauStack downloads it on demand over HTTPS, validates a pinned SHA-256 hash, checks the executable version, and installs into an isolated `runtimes/` directory inside its user data directory. An interrupted or mismatched download does not replace an existing runtime. Source URL and license are visible in the application. The current Node.js artifact is 24.22.2 on macOS ARM and Windows x64; PHP 8.5.12 is offered only on Windows x64. These exact versions must be updated deliberately when upstream patches are released.
+
+On Windows, the managed PHP binary is used for previews after installation. Its official binary may need the Microsoft Visual C++ Redistributable 2015–2022 x64; if unavailable, MandauStack reports a startup error. Managed Node.js is available by its installed binary path but is **not yet added to the terminal PATH or selected per project**. macOS PHP still comes from the user's existing installation; an officially redistributable macOS PHP build has not been selected yet.
+
+## Product decisions
+
+- Target 1.0.0: local site management, PHP and Node.js versions, nginx, local domains and HTTPS, Composer/Laravel installer, database/cache/search/storage/broadcasting services, per-site configuration, mail capture, logs, dumps, profiling, Tinker, Xdebug, workspace Git, and CLI. Every promised feature must pass real Laravel integration tests on both OSes before 1.0.0.
+- Windows WSL2 is optional and only required when installing a service with no officially supported native Windows runtime (for example Valkey or Typesense).
+- RustFS is the default S3-compatible local storage option. MinIO Community support depends on a viable source/community distribution method; never silently substitute proprietary editions.
+- Installed service data and project files persist across application updates and uninstall. Back up before data migrations; deleting user data always requires a separate explicit action.
+- Initial 0.x releases use manual installers; auto-update is a prerequisite for 1.0.0. Runtime installation must be on demand, with download integrity checks and a visible provenance/license record.
+- MandauStack's own code is MIT licensed. Downloadable services have their own licenses; free-to-use does not always mean OSI-approved open source. MongoDB Community, for instance, uses SSPL and must be labeled accordingly.
+
+## Safe version changes (design requirement)
+
+The UI will offer a project-level version selector with installed versions and compatibility information. Runtime switching is **not implemented in 0.1.2**. Before it is exposed, the engine must:
+
+1. Download into a versioned, isolated directory, verify checksum/signature and executable, then leave the currently active version untouched.
+2. Validate project configuration, required PHP extensions or service compatibility and port availability before switching. PHP CLI and web server must resolve to the same selected version.
+3. Keep a known-good configuration, switch atomically, restart only affected processes, run a health check, and automatically restore the previous version/configuration if it fails. Report the exact reason and recovery action.
+4. For MySQL/MariaDB/PostgreSQL and similar stateful services, **never point a different major version at the existing data directory without a supported migration**. Provide separate instances and data directories; require a verified backup and migration path for upgrades. Changing a project's database connection must not implicitly upgrade its server or destroy data.
+5. Test both successful transitions and deliberate failure (bad archive, unavailable port, incompatible data, failed health check) on macOS and Windows before the selector ships.
+
+See [docs/runtime-matrix.md](docs/runtime-matrix.md) for the initial service plan.
