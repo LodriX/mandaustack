@@ -77,6 +77,11 @@ input:focus { border-color: var(--brand); }
 .runtime span { overflow-wrap: anywhere; }
 .runtime-install { align-self: flex-start; margin-top: 4px; font-size: 12px; padding: 8px 11px; }
 .runtime-note { margin-top: 12px; font-size: 12px; }
+.nginx-plan { margin-top: 12px; border: 1px solid var(--border); border-radius: 10px; padding: 15px; background: #fff; }
+.nginx-plan p { margin-bottom: 10px; }
+.nginx-plan details { margin-bottom: 12px; font-size: 12px; }
+.nginx-plan pre { max-height: 260px; overflow: auto; padding: 12px; background: #f5f4f4; border-radius: 8px; font-size: 11px; }
+.nginx-plan button { margin-right: 8px; }
 .alert { display: flex; justify-content: space-between; align-items: center; margin-bottom: 17px; padding: 12px 15px; border: 1px solid #e8a4a8; border-radius: 9px; color: #8e1020; background: #fff0f0; font-size: 13px; }
 .alert button { background: none; border: 0; color: inherit; font-size: 20px; }
 @media (max-width: 850px) {

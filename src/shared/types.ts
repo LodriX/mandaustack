@@ -68,6 +68,16 @@ export interface HostsPlanSummary {
   restoreAvailable: boolean;
 }
 
+export interface NginxPlan {
+  file: string;
+  configuration: string;
+  configurationSha256: string;
+  changed: boolean;
+  originalSha256: string;
+  restoreAvailable: boolean;
+  listenPort: number;
+}
+
 export interface DesktopApi {
   getInfo(): Promise<AppInfo>;
   listSites(): Promise<Site[]>;
@@ -80,6 +90,9 @@ export interface DesktopApi {
   restoreHosts(): Promise<HostsPlanSummary>;
   installCaTrust(): Promise<CaTrustStatus>;
   removeCaTrust(): Promise<CaTrustStatus>;
+  previewNginx(): Promise<NginxPlan>;
+  prepareNginx(expectedSha256: string, expectedConfigurationSha256: string): Promise<NginxPlan>;
+  restoreNginx(expectedSha256: string): Promise<NginxPlan>;
   detectRuntimes(): Promise<RuntimeStatus[]>;
   listManagedRuntimes(): Promise<RuntimeOption[]>;
   installRuntime(id: string): Promise<RuntimeOption[]>;

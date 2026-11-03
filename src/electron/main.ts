@@ -6,6 +6,7 @@ import { dataDirectory } from '../core/paths';
 import { planHosts, systemHostsPath } from '../core/hosts';
 import { HttpsGateway } from '../core/https-gateway';
 import { MacCaTrust } from '../core/mac-ca-trust';
+import { NginxConfigManager } from '../core/nginx-config';
 import { authorizedHostsOperation } from '../core/mac-hosts';
 import { PreviewManager } from '../core/previews';
 import { availableArtifacts, RuntimeInstaller } from '../core/runtime-installer';
@@ -24,6 +25,8 @@ const previews = new PreviewManager(undefined, async () => {
   return managed ? { binary: managed.binary, mode: php?.archive === 'binary' ? 'frankenphp' as const : 'php' as const } : findPhpBinary();
 });
 const gateway = new HttpsGateway(dataDirectory(), () => store.list(), previews);
+const nginx = new NginxConfigManager(dataDirectory());
+let updatingNginx = false;
 let caTrust: MacCaTrust | null = null;
 let updatingCaTrust = false;
 let gatewayError: string | null = null;
@@ -56,6 +59,12 @@ function hostsPreview() {
 }
 
 function macHelperPath(): string { return path.join(app.getAppPath(), 'dist-electron', 'hosts-helper.js'); }
+
+function nginxPreview() {
+  const status = gateway.getStatus();
+  if (!status) throw new Error('Start the HTTPS gateway before preparing nginx.');
+  return nginx.plan(store.list(), status.port);
+}
 
 async function managedRuntimes(): Promise<RuntimeOption[]> {
   return Promise.all(artifacts.map(async artifact => ({
@@ -128,6 +137,30 @@ app.whenReady().then(async () => {
     updatingCaTrust = true;
     try { return await caTrust.remove(); }
     finally { updatingCaTrust = false; }
+  });
+  ipcMain.handle('nginx:preview', nginxPreview);
+  ipcMain.handle('nginx:prepare', async (_event, expected: unknown, expectedConfiguration: unknown) => {
+    if (process.platform !== 'darwin') throw new Error('nginx configuration preparation is available on macOS only.');
+    const preview = nginxPreview();
+    if (typeof expected !== 'string' || expected !== preview.originalSha256 ||
+      typeof expectedConfiguration !== 'string' || expectedConfiguration !== preview.configurationSha256) {
+      throw new Error('nginx configuration or site plan changed; review it again.');
+    }
+    if (updatingNginx) throw new Error('A nginx configuration operation is already in progress.');
+    updatingNginx = true;
+    try {
+      const binary = ['/opt/homebrew/bin/nginx', '/usr/local/bin/nginx'].find(candidate => fs.existsSync(candidate));
+      if (!binary) throw new Error('Install nginx locally to validate the staged configuration before applying it.');
+      await nginx.prepare(store.list(), gateway.getStatus()!.port, expected, expectedConfiguration, binary);
+      return nginxPreview();
+    } finally { updatingNginx = false; }
+  });
+  ipcMain.handle('nginx:restore', (_event, expected: unknown) => {
+    if (process.platform !== 'darwin') throw new Error('nginx configuration recovery is available on macOS only.');
+    if (updatingNginx) throw new Error('A nginx configuration operation is already in progress.');
+    if (typeof expected !== 'string') throw new Error('Invalid nginx recovery checksum.');
+    nginx.restore(expected);
+    return nginxPreview();
   });
   ipcMain.handle('sites:list', () => store.list());
   ipcMain.handle('sites:chooseDirectory', async () => {
