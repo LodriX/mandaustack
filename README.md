@@ -4,7 +4,7 @@ MandauStack is a free, open-source local development environment for PHP and Lar
 
 Branding follows the supplied MandauStack reference: a red mandau/server emblem, lowercase wordmark, and the tagline “LOCAL DEVELOPMENT ENVIRONMENT.” The vector artwork in `assets/mandaustack-icon.svg` is a redraw based on that reference; replace it with the original vector master if one becomes available. The UI, generated app icons, and installer metadata use the same identity. Copyright: © 2026 MandauStack Contributors; application source is MIT licensed.
 
-**Status: 0.1.2 early preview.** This release links existing project folders, persists a project registry, detects PHP/Node.js/Composer/nginx already on the system, and provides a desktop interface and basic CLI. The desktop app can start and stop local PHP previews for linked projects. Managed downloads are available for Node.js on macOS Apple Silicon and Windows x64, plus PHP on Windows x64. A linked `*.test` name is **not served yet**. Managed PHP on macOS, version switching, DNS, HTTPS, databases, and other services are planned; do not use this version as a complete local stack.
+**Status: 0.1.3 early preview.** This release links existing project folders, persists a project registry, detects PHP/Node.js/Composer/nginx already on the system, and provides a desktop interface and basic CLI. The desktop app can start and stop local PHP previews for linked projects. Managed downloads are available for Node.js and PHP on macOS Apple Silicon and Windows x64. A linked `*.test` name is **not served yet**. Version switching, DNS, HTTPS, databases, and other services are planned; do not use this version as a complete local stack.
 
 ## Develop
 
@@ -35,15 +35,17 @@ npm run cli -- runtimes:list
 
 ### Local preview
 
-With PHP already installed on your system, link a project containing `public/index.php` (Laravel), `index.php`, or `index.html`, then select **Start preview**. The app checks PHP on PATH and common Homebrew paths on macOS. It starts a PHP development server bound to `127.0.0.1` on a free port. Select **Open in browser** to visit its actual URL; **Stop** or quitting the app ends the process. Laravel's `public/` directory is served instead of the project root, so files outside `public/` are not exposed. The preview address changes after a restart, and projects are not started automatically. The CLI currently manages registrations only, not running previews.
+Link a project containing `public/index.php` (Laravel), `index.php`, or `index.html`, then select **Start preview**. Install managed PHP in the app first, or use PHP already on the system. The app starts a PHP development server on `127.0.0.1` at a free port; managed macOS PHP uses FrankenPHP's included server. Select **Open in browser** to visit its actual URL; **Stop** or quitting the app ends the process. Laravel's `public/` directory is served instead of the project root, so files outside `public/` are not exposed. The preview address changes after a restart, and projects are not started automatically. The CLI currently manages registrations only, not running previews.
 
-This preview is an intermediate development feature, not the promised nginx/HTTPS/`.test` service. PHP's built-in server is intended for local use only. To keep a project running without this desktop window, a persistent managed service will be needed in a future version.
+This preview is an intermediate development feature, not the promised nginx/HTTPS/`.test` service. To keep a project running without this desktop window, a persistent managed service will be needed in a future version.
 
 ### Managed runtime downloads
 
-In **Managed runtimes**, select **Install** for a pinned official artifact. MandauStack downloads it on demand over HTTPS, validates a pinned SHA-256 hash, checks the executable version, and installs into an isolated `runtimes/` directory inside its user data directory. An interrupted or mismatched download does not replace an existing runtime. Source URL and license are visible in the application. The current Node.js artifact is 24.22.2 on macOS ARM and Windows x64; PHP 8.5.12 is offered only on Windows x64. These exact versions must be updated deliberately when upstream patches are released.
+In **Managed runtimes**, select **Install** for a pinned artifact. MandauStack downloads it on demand over HTTPS, validates a pinned SHA-256 hash, checks the executable version, and installs into an isolated `runtimes/` directory inside its user data directory. An interrupted or mismatched download does not replace an existing runtime. Source URL and license are visible in the application. The current Node.js artifact is 24.22.2 on macOS ARM and Windows x64. PHP 8.5.12 comes from the official Windows PHP archive on Windows x64 and from the official FrankenPHP 1.13.4 standalone release on macOS ARM; the latter contains PHP and a web server, and its required Laravel extensions are checked during installation. These exact versions must be updated deliberately when upstream patches are released.
 
-On Windows, the managed PHP binary is used for previews after installation. Its official binary may need the Microsoft Visual C++ Redistributable 2015–2022 x64; if unavailable, MandauStack reports a startup error. Managed Node.js is available by its installed binary path but is **not yet added to the terminal PATH or selected per project**. macOS PHP still comes from the user's existing installation; an officially redistributable macOS PHP build has not been selected yet.
+Managed PHP is used for previews after installation on both platforms. On macOS it is provided by FrankenPHP (`frankenphp php-cli` for scripts, `frankenphp php-server` for the preview); the app does not yet provide a terminal `php` alias or managed Composer. On Windows, the official PHP binary may need the Microsoft Visual C++ Redistributable 2015–2022 x64; if unavailable, MandauStack reports a startup error. Managed Node.js is available by its installed binary path but is **not yet added to the terminal PATH or selected per project**. Windows installation still needs validation on a Windows machine.
+
+The macOS ARM PHP artifact was tested by downloading it from the pinned GitHub release, verifying its hash and extensions, serving a PHP site, and running Artisan and the welcome page of a newly created Laravel 13 application. The Laravel app was created with an existing system Composer/PHP installation; managed Composer and a clean-machine installation flow still need testing. Set `MANDAUSTACK_TEST_REMOTE_RUNTIME=1` when running `npm test` to repeat the official runtime download and preview checks. To additionally test a local Laravel 13 project, set `MANDAUSTACK_TEST_FRANKENPHP_BINARY` to the downloaded standalone binary and `MANDAUSTACK_TEST_LARAVEL_SITE` to that project directory.
 
 ## Product decisions
 
@@ -56,7 +58,7 @@ On Windows, the managed PHP binary is used for previews after installation. Its 
 
 ## Safe version changes (design requirement)
 
-The UI will offer a project-level version selector with installed versions and compatibility information. Runtime switching is **not implemented in 0.1.2**. Before it is exposed, the engine must:
+The UI will offer a project-level version selector with installed versions and compatibility information. Runtime switching is **not implemented in 0.1.3**. Before it is exposed, the engine must:
 
 1. Download into a versioned, isolated directory, verify checksum/signature and executable, then leave the currently active version untouched.
 2. Validate project configuration, required PHP extensions or service compatibility and port availability before switching. PHP CLI and web server must resolve to the same selected version.

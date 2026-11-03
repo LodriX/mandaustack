@@ -12,8 +12,13 @@ import yauzl from 'yauzl';
 import type { InstalledRuntime, RuntimeArtifact } from '../shared/types';
 
 const execute = promisify(execFile);
-const MAX_DOWNLOAD_BYTES = 160 * 1024 * 1024;
+const MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024;
 const MAX_EXTRACTED_BYTES = 600 * 1024 * 1024;
+const FRANKENPHP_EXTENSIONS = [
+  'bcmath', 'ctype', 'curl', 'dom', 'fileinfo', 'filter', 'hash', 'intl',
+  'mbstring', 'openssl', 'PDO', 'pdo_mysql', 'pdo_sqlite', 'session',
+  'tokenizer', 'xml', 'zip'
+];
 
 // Pinned official artifacts. Never accept arbitrary URLs from renderer IPC.
 export function availableArtifacts(platform = process.platform, arch = process.arch): RuntimeArtifact[] {
@@ -25,6 +30,11 @@ export function availableArtifacts(platform = process.platform, arch = process.a
       sourceUrl: `https://nodejs.org/dist/v${nodeVersion}/${nodeRoot}.tar.gz`,
       sha256: 'aa9549349e47dffaa42dcf95d6e06ade8c4bdafc980979883b88767670df385a',
       archive: 'tar.gz', root: nodeRoot, executable: 'bin/node', license: 'MIT'
+    }, {
+      id: 'frankenphp-1.13.4-php-8.5.12', name: 'PHP', version: '8.5.12',
+      sourceUrl: 'https://github.com/php/frankenphp/releases/download/v1.13.4/frankenphp-mac-arm64',
+      sha256: '11ff0e0c3c2ae51a50ff4815d258a6775bb63e51718a34621e2fa8a3112c512d',
+      archive: 'binary', root: '', executable: 'frankenphp', license: 'FrankenPHP: MIT; PHP: PHP-3.01'
     }];
   }
   if (platform === 'win32' && arch === 'x64') {
@@ -127,10 +137,23 @@ async function extractTar(archive: string, output: string, artifact: RuntimeArti
 
 async function downloadOfficial(url: string, target: string): Promise<void> {
   const parsed = new URL(url);
-  if (parsed.protocol !== 'https:' || !['nodejs.org', 'downloads.php.net'].includes(parsed.hostname)) {
+  if (parsed.protocol !== 'https:' || !(
+    ['nodejs.org', 'downloads.php.net'].includes(parsed.hostname) ||
+    (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/php/frankenphp/releases/download/'))
+  )) {
     throw new Error('Runtime source must be an official HTTPS download.');
   }
-  const response = await fetch(url, { signal: AbortSignal.timeout(120_000), redirect: 'error' });
+  const signal = AbortSignal.timeout(180_000);
+  let response = await fetch(url, { signal, redirect: parsed.hostname === 'github.com' ? 'manual' : 'error' });
+  if (parsed.hostname === 'github.com') {
+    const location = response.headers.get('location');
+    const target = location ? new URL(location, url) : null;
+    if (response.status !== 302 || target?.protocol !== 'https:' || target.hostname !== 'release-assets.githubusercontent.com') {
+      throw new Error('Runtime release did not redirect to the expected GitHub asset host.');
+    }
+    await response.body?.cancel();
+    response = await fetch(target, { signal, redirect: 'error' });
+  }
   if (!response.ok || !response.body) throw new Error(`Runtime download failed (HTTP ${response.status}).`);
   let size = 0;
   const limit = new Transform({ transform(chunk: Buffer, _encoding, callback) {
@@ -154,8 +177,14 @@ export class RuntimeInstaller {
     private readonly download: (url: string, target: string) => Promise<void> = downloadOfficial,
     private readonly verify: (binary: string, artifact: RuntimeArtifact) => Promise<void> = async (binary, artifact) => {
       try {
-        const { stdout, stderr } = await execute(binary, ['--version'], { timeout: 5000, windowsHide: true });
+        const { stdout, stderr } = await execute(binary, artifact.archive === 'binary' ? ['version'] : ['--version'], { timeout: 5000, windowsHide: true });
         if (!(stdout + stderr).includes(artifact.version)) throw new Error('Downloaded runtime reports an unexpected version.');
+        if (artifact.archive === 'binary') {
+          // The macOS standalone server also provides the project's PHP CLI.
+          // Reject an artifact lacking the extensions needed by typical Laravel projects.
+          const script = `foreach (${JSON.stringify(FRANKENPHP_EXTENSIONS)} as $extension) { if (!extension_loaded($extension)) { fwrite(STDERR, "Missing extension: $extension\\n"); exit(1); } }`;
+          await execute(binary, ['php-cli', '-r', script], { timeout: 10_000, windowsHide: true });
+        }
       } catch (error) {
         if (artifact.name === 'PHP' && process.platform === 'win32') {
           throw new Error(`PHP could not start. The Microsoft Visual C++ Redistributable 2015–2022 x64 may be required. ${(error as Error).message}`);
@@ -180,7 +209,8 @@ export class RuntimeInstaller {
   }
 
   async install(artifact: RuntimeArtifact): Promise<InstalledRuntime> {
-    if (!/^[a-z0-9][a-z0-9.-]*$/.test(artifact.id) || !/^[a-f0-9]{64}$/.test(artifact.sha256)) {
+    if (!/^[a-z0-9][a-z0-9.-]*$/.test(artifact.id) || !/^[a-f0-9]{64}$/.test(artifact.sha256) ||
+      !['zip', 'tar.gz', 'binary'].includes(artifact.archive)) {
       throw new Error('Invalid runtime manifest.');
     }
     const pending = this.pending.get(artifact.id);
@@ -198,14 +228,15 @@ export class RuntimeInstaller {
     const staging = path.join(this.directory, `.install-${artifact.id}-${randomUUID()}`);
     const content = path.join(staging, 'content');
     await mkdir(content, { recursive: true });
-    const archive = path.join(staging, `download.${artifact.archive === 'zip' ? 'zip' : 'tar.gz'}`);
+    const archive = path.join(staging, `download.${artifact.archive === 'zip' ? 'zip' : artifact.archive === 'binary' ? 'bin' : 'tar.gz'}`);
     try {
       await this.download(artifact.sourceUrl, archive);
       if ((await stat(archive)).size > MAX_DOWNLOAD_BYTES || (await sha256(archive)) !== artifact.sha256) {
         throw new Error('Runtime checksum mismatch; no version was installed.');
       }
       if (artifact.archive === 'zip') await extractZip(archive, content, artifact);
-      else await extractTar(archive, content, artifact);
+      else if (artifact.archive === 'tar.gz') await extractTar(archive, content, artifact);
+      else await rename(archive, path.join(content, artifact.executable));
       const binary = path.join(content, ...artifact.executable.split('/'));
       if (!(await stat(binary)).isFile()) throw new Error('Runtime archive is missing its executable.');
       if (process.platform !== 'win32') await chmod(binary, 0o755);

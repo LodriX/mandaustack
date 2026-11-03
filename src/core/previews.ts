@@ -8,6 +8,7 @@ import { findPhpBinary } from './runtimes';
 
 const execute = promisify(execFile);
 const HOST = '127.0.0.1';
+type PhpRuntime = string | { binary: string; mode: 'php' | 'frankenphp' };
 
 export function documentRoot(site: Site): string {
   // A moved or replaced project directory must be relinked, not served from another path.
@@ -58,7 +59,7 @@ export class PreviewManager {
   private readonly running = new Map<string, { child: ChildProcess; url: string }>();
   private readonly pending = new Map<string, Promise<PreviewStatus>>();
 
-  constructor(private readonly phpBinary?: string, private readonly locatePhp: () => Promise<string> = findPhpBinary) {}
+  constructor(private readonly phpBinary?: string, private readonly locatePhp: () => Promise<PhpRuntime> = findPhpBinary) {}
 
   list(): PreviewStatus[] {
     return [...this.running].map(([siteId, { url }]) => ({ siteId, url }));
@@ -80,16 +81,21 @@ export class PreviewManager {
 
   private async launch(site: Site): Promise<PreviewStatus> {
     const root = documentRoot(site);
-    let binary: string;
+    let runtime: PhpRuntime;
     if (this.phpBinary) {
       try {
         await execute(this.phpBinary, ['-v'], { timeout: 3000, windowsHide: true });
-        binary = this.phpBinary;
+        runtime = this.phpBinary;
       } catch { throw new Error('PHP is not available. Install PHP before starting a preview.'); }
-    } else binary = await this.locatePhp();
+    } else runtime = await this.locatePhp();
+    const binary = typeof runtime === 'string' ? runtime : runtime.binary;
+    const mode = typeof runtime === 'string' ? 'php' : runtime.mode;
     const port = await availablePort();
     const url = `http://${HOST}:${port}/`;
-    const child = spawn(binary, ['-S', `${HOST}:${port}`, '-t', root], {
+    const args = mode === 'frankenphp'
+      ? ['php-server', '--listen', `${HOST}:${port}`, '--root', root]
+      : ['-S', `${HOST}:${port}`, '-t', root];
+    const child = spawn(binary, args, {
       cwd: site.path,
       windowsHide: true,
       stdio: ['ignore', 'ignore', 'pipe']

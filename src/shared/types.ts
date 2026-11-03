@@ -18,7 +18,7 @@ export interface RuntimeArtifact {
   version: string;
   sourceUrl: string;
   sha256: string;
-  archive: 'tar.gz' | 'zip';
+  archive: 'tar.gz' | 'zip' | 'binary';
   root: string;
   executable: string;
   license: string;

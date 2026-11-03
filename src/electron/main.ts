@@ -15,7 +15,7 @@ const installer = new RuntimeInstaller(path.join(dataDirectory(), 'runtimes'));
 const previews = new PreviewManager(undefined, async () => {
   const php = artifacts.find(artifact => artifact.name === 'PHP');
   const managed = php ? await installer.installed(php) : null;
-  return managed?.binary || findPhpBinary();
+  return managed ? { binary: managed.binary, mode: php?.archive === 'binary' ? 'frankenphp' as const : 'php' as const } : findPhpBinary();
 });
 
 async function managedRuntimes(): Promise<RuntimeOption[]> {

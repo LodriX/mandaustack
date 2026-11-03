@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -7,6 +8,7 @@ import { afterEach, test } from 'node:test';
 import * as tar from 'tar';
 import yazl from 'yazl';
 import type { RuntimeArtifact } from '../shared/types';
+import { PreviewManager } from './previews';
 import { availableArtifacts, RuntimeInstaller } from './runtime-installer';
 
 const roots: string[] = [];
@@ -37,9 +39,26 @@ function installer(root: string, source: string, onDownload?: () => void): Runti
 }
 
 test('official catalog is pinned by OS and architecture', () => {
-  assert.equal(availableArtifacts('darwin', 'arm64')[0].sha256.length, 64);
+  assert.deepEqual(availableArtifacts('darwin', 'arm64').map(item => item.name), ['Node.js', 'PHP']);
+  assert.equal(availableArtifacts('darwin', 'arm64')[1].archive, 'binary');
   assert.deepEqual(availableArtifacts('win32', 'x64').map(item => item.name), ['Node.js', 'PHP']);
   assert.deepEqual(availableArtifacts('darwin', 'x64'), []);
+});
+
+test('installs a standalone executable after checksum and version verification', async () => {
+  const root = fixture();
+  const source = path.join(root, 'runtime.bin');
+  fs.writeFileSync(source, 'binary fixture');
+  const spec: RuntimeArtifact = {
+    id: 'binary-fixture', name: 'PHP', version: '0.0.0',
+    sourceUrl: 'https://github.com/php/frankenphp/releases/download/v0/fixture',
+    sha256: createHash('sha256').update(fs.readFileSync(source)).digest('hex'),
+    archive: 'binary', root: '', executable: 'frankenphp', license: 'MIT'
+  };
+  const manager = installer(root, source);
+  const installed = await manager.install(spec);
+  assert.equal(fs.readFileSync(installed.binary, 'utf8'), 'binary fixture');
+  assert.deepEqual(fs.readdirSync(path.dirname(installed.binary)).sort(), ['frankenphp', 'manifest.json']);
 });
 
 test('verifies archive and installs in an isolated directory only once', async () => {
@@ -111,4 +130,51 @@ test('installs the pinned official Node.js artifact end to end', {
   const installed = await new RuntimeInstaller(path.join(root, 'runtimes')).install(spec);
   assert.ok(fs.existsSync(installed.binary));
   assert.match(installed.binary, /node-24\.22\.2/);
+});
+
+test('installs official macOS PHP and serves a PHP project via its built-in server', {
+  skip: process.platform !== 'darwin' || !process.env.MANDAUSTACK_TEST_REMOTE_RUNTIME,
+  timeout: 240_000
+}, async () => {
+  const spec = availableArtifacts().find(item => item.name === 'PHP');
+  assert.ok(spec);
+  const root = fixture();
+  const localBinary = process.env.MANDAUSTACK_TEST_FRANKENPHP_BINARY;
+  const manager = localBinary
+    ? new RuntimeInstaller(path.join(root, 'runtimes'), async (_url, target) => { fs.copyFileSync(localBinary, target); })
+    : new RuntimeInstaller(path.join(root, 'runtimes'));
+  const installed = await manager.install(spec);
+  const publicDir = path.join(root, 'site', 'public');
+  fs.mkdirSync(publicDir, { recursive: true });
+  fs.writeFileSync(path.join(publicDir, 'index.php'), '<?php echo "php=" . PHP_VERSION . ";intl=" . (int)extension_loaded("intl");');
+  fs.writeFileSync(path.join(root, 'site', 'secret.txt'), 'private-project-file');
+  const sitePath = fs.realpathSync(path.join(root, 'site'));
+  const otherPath = path.join(root, 'other-site');
+  fs.mkdirSync(otherPath);
+  fs.writeFileSync(path.join(otherPath, 'index.php'), '<?php echo "second-site";');
+  const preview = new PreviewManager(undefined, async () => ({ binary: installed.binary, mode: 'frankenphp' }));
+  try {
+    const running = await preview.start({ id: 'site', name: 'site', path: sitePath, domain: 'site.test', createdAt: new Date().toISOString() });
+    assert.equal(await (await fetch(new URL('laravel-route', running.url))).text(), 'php=8.5.12;intl=1');
+    assert.notEqual(await (await fetch(new URL('secret.txt', running.url))).text(), 'private-project-file');
+    const second = await preview.start({ id: 'other', name: 'other', path: fs.realpathSync(otherPath), domain: 'other.test', createdAt: new Date().toISOString() });
+    assert.equal(await (await fetch(second.url)).text(), 'second-site');
+    assert.equal(await (await fetch(running.url)).text(), 'php=8.5.12;intl=1');
+  } finally { await preview.stopAll(); }
+});
+
+test('runs an actual Laravel app with managed macOS PHP', {
+  skip: process.platform !== 'darwin' || !process.env.MANDAUSTACK_TEST_FRANKENPHP_BINARY || !process.env.MANDAUSTACK_TEST_LARAVEL_SITE,
+  timeout: 30_000
+}, async () => {
+  const binary = process.env.MANDAUSTACK_TEST_FRANKENPHP_BINARY!;
+  const sitePath = fs.realpathSync(process.env.MANDAUSTACK_TEST_LARAVEL_SITE!);
+  assert.match(execFileSync(binary, ['php-cli', 'artisan', '--version'], { cwd: sitePath, encoding: 'utf8' }), /Laravel Framework 13\./);
+  const preview = new PreviewManager(undefined, async () => ({ binary, mode: 'frankenphp' }));
+  try {
+    const running = await preview.start({ id: 'laravel', name: 'laravel', path: sitePath, domain: 'laravel.test', createdAt: new Date().toISOString() });
+    const response = await fetch(running.url);
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), /Laravel/);
+  } finally { await preview.stopAll(); }
 });
