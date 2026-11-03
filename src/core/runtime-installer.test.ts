@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
+import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, test } from 'node:test';
@@ -9,6 +10,9 @@ import * as tar from 'tar';
 import yazl from 'yazl';
 import type { RuntimeArtifact } from '../shared/types';
 import { PreviewManager } from './previews';
+import { NginxConfigManager } from './nginx-config';
+import { NginxService } from './nginx-service';
+import { HttpsGateway } from './https-gateway';
 import { availableArtifacts, RuntimeInstaller } from './runtime-installer';
 
 const roots: string[] = [];
@@ -39,9 +43,10 @@ function installer(root: string, source: string, onDownload?: () => void): Runti
 }
 
 test('official catalog is pinned by OS and architecture', () => {
-  assert.deepEqual(availableArtifacts('darwin', 'arm64').map(item => item.name), ['Node.js', 'PHP']);
+  assert.deepEqual(availableArtifacts('darwin', 'arm64').map(item => item.name), ['Node.js', 'PHP', 'nginx']);
   assert.equal(availableArtifacts('darwin', 'arm64')[1].archive, 'binary');
-  assert.deepEqual(availableArtifacts('win32', 'x64').map(item => item.name), ['Node.js', 'PHP']);
+  assert.deepEqual(availableArtifacts('win32', 'x64').map(item => item.name), ['Node.js', 'PHP', 'nginx']);
+  assert.equal(availableArtifacts('darwin', 'arm64')[2].buildSources?.length, 2);
   assert.deepEqual(availableArtifacts('darwin', 'x64'), []);
 });
 
@@ -130,6 +135,65 @@ test('installs the pinned official Node.js artifact end to end', {
   const installed = await new RuntimeInstaller(path.join(root, 'runtimes')).install(spec);
   assert.ok(fs.existsSync(installed.binary));
   assert.match(installed.binary, /node-24\.22\.2/);
+});
+
+test('extracts the pinned official Windows nginx ZIP into an isolated directory', {
+  skip: !process.env.MANDAUSTACK_TEST_NGINX_WINDOWS_ARCHIVE, timeout: 15_000
+}, async () => {
+  const spec = availableArtifacts('win32', 'x64').find(item => item.name === 'nginx')!;
+  const root = fixture();
+  const manager = new RuntimeInstaller(path.join(root, 'runtimes'), async (_url, destination) => {
+    fs.copyFileSync(process.env.MANDAUSTACK_TEST_NGINX_WINDOWS_ARCHIVE!, destination);
+  }, async (binary, artifact) => {
+    assert.equal(artifact.name, 'nginx');
+    assert.deepEqual([...fs.readFileSync(binary).subarray(0, 2)], [0x4d, 0x5a]);
+  });
+  const installed = await manager.install(spec);
+  assert.ok(fs.existsSync(path.join(path.dirname(installed.binary), 'docs', 'LICENSE')));
+  assert.equal((await manager.installed(spec))?.binary, installed.binary);
+});
+
+test('builds pinned nginx, OpenSSL and PCRE2 source into a portable macOS runtime', {
+  skip: process.platform !== 'darwin' || !process.env.MANDAUSTACK_TEST_NGINX_SOURCE,
+  timeout: 900_000
+}, async () => {
+  const spec = availableArtifacts('darwin', 'arm64').find(item => item.name === 'nginx')!;
+  const root = fixture();
+  const archives = process.env.MANDAUSTACK_TEST_NGINX_SOURCE_ARCHIVES;
+  const manager = archives ? new RuntimeInstaller(path.join(root, 'runtimes'), async (url, destination) => {
+    fs.copyFileSync(path.join(archives, path.basename(new URL(url).pathname)), destination);
+  }) : new RuntimeInstaller(path.join(root, 'runtimes'));
+  const installed = await manager.install(spec);
+  const version = spawnSync(installed.binary, ['-V'], { encoding: 'utf8', timeout: 5000 });
+  assert.equal(version.status, 0);
+  assert.match(version.stderr, /nginx\/1\.30\.6/);
+  assert.match(version.stderr, /OpenSSL 3\.5\.9/);
+  assert.ok(fs.existsSync(path.join(path.dirname(installed.binary), '..', 'OpenSSL.LICENSE')));
+  const project = path.join(root, 'project');
+  fs.mkdirSync(project);
+  fs.writeFileSync(path.join(project, 'index.php'), '<?php echo "managed nginx:" . $_SERVER["HTTP_HOST"];');
+  const site = { id: 'alpha', name: 'alpha', path: fs.realpathSync(project), domain: 'alpha.test', createdAt: new Date().toISOString() };
+  const previews = new PreviewManager();
+  const gateway = new HttpsGateway(root, () => [site], previews);
+  const config = new NginxConfigManager(root);
+  const service = new NginxService(config);
+  try {
+    const status = await gateway.start();
+    await previews.start(site);
+    const plan = config.plan([site], status.port);
+    await config.prepare([site], status.port, plan.originalSha256, plan.configurationSha256, installed.binary);
+    assert.equal((await service.start([site], status.port, status.caPath, installed.binary)).running, true);
+    const body = await new Promise<string>((resolve, reject) => {
+      const request = https.get({ hostname: '127.0.0.1', port: 8443, servername: site.domain,
+        headers: { host: site.domain }, ca: fs.readFileSync(status.caPath) }, response => {
+        let text = '';
+        response.on('data', (chunk: Buffer) => { text += chunk.toString(); });
+        response.on('end', () => resolve(text));
+      });
+      request.on('error', reject);
+    });
+    assert.equal(body, 'managed nginx:alpha.test');
+  } finally { await service.stop(); await previews.stopAll(); await gateway.stop(); }
 });
 
 test('installs official macOS PHP and serves a PHP project via its built-in server', {

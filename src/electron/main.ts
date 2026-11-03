@@ -68,16 +68,19 @@ function nginxPreview() {
   return nginx.plan(store.list(), status.port);
 }
 
-function localNginxBinary(): string {
+async function localNginxBinary(): Promise<string> {
+  const artifact = artifacts.find(item => item.name === 'nginx');
+  const managed = artifact ? await installer.installed(artifact) : null;
+  if (managed) return managed.binary;
   const binary = ['/opt/homebrew/bin/nginx', '/usr/local/bin/nginx'].find(candidate => fs.existsSync(candidate));
-  if (!binary) throw new Error('Install nginx locally to validate and run the configuration.');
+  if (!binary) throw new Error('Install managed nginx in the app before preparing its configuration.');
   return binary;
 }
 
 async function managedRuntimes(): Promise<RuntimeOption[]> {
   return Promise.all(artifacts.map(async artifact => ({
     id: artifact.id, name: artifact.name, version: artifact.version,
-    sourceUrl: artifact.sourceUrl, license: artifact.license,
+    sourceUrl: artifact.sourceUrl, license: artifact.license, buildSources: artifact.buildSources,
     installed: Boolean(await installer.installed(artifact))
   })));
 }
@@ -158,7 +161,7 @@ app.whenReady().then(async () => {
     if (updatingNginx) throw new Error('A nginx configuration operation is already in progress.');
     updatingNginx = true;
     try {
-      await nginx.prepare(store.list(), gateway.getStatus()!.port, expected, expectedConfiguration, localNginxBinary());
+      await nginx.prepare(store.list(), gateway.getStatus()!.port, expected, expectedConfiguration, await localNginxBinary());
       return nginxPreview();
     } finally { updatingNginx = false; }
   });
@@ -177,7 +180,7 @@ app.whenReady().then(async () => {
     const status = gateway.getStatus();
     if (!status) throw new Error('The HTTPS gateway is unavailable.');
     updatingNginx = true;
-    try { return await nginxService.start(store.list(), status.port, status.caPath, localNginxBinary()); }
+    try { return await nginxService.start(store.list(), status.port, status.caPath, await localNginxBinary()); }
     finally { updatingNginx = false; }
   });
   ipcMain.handle('nginx:stop', async () => {

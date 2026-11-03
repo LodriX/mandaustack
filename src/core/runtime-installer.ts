@@ -2,7 +2,8 @@ import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import { createWriteStream } from 'node:fs';
-import { mkdir, readFile, rename, rm, stat, writeFile, chmod } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, stat, writeFile, chmod, copyFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -35,6 +36,18 @@ export function availableArtifacts(platform = process.platform, arch = process.a
       sourceUrl: 'https://github.com/php/frankenphp/releases/download/v1.13.4/frankenphp-mac-arm64',
       sha256: '11ff0e0c3c2ae51a50ff4815d258a6775bb63e51718a34621e2fa8a3112c512d',
       archive: 'binary', root: '', executable: 'frankenphp', license: 'FrankenPHP: MIT; PHP: PHP-3.01'
+    }, {
+      id: 'nginx-1.30.6', name: 'nginx', version: '1.30.6',
+      sourceUrl: 'https://nginx.org/download/nginx-1.30.6.tar.gz',
+      sha256: '3cf46f5ed7504d460125866b7bea99fb357f31d887e2e63b35503310e9b8b6c8',
+      archive: 'tar.gz', root: 'nginx-1.30.6', executable: 'bin/nginx',
+      license: 'nginx: BSD-2-Clause; OpenSSL: Apache-2.0; PCRE2: BSD-3-Clause',
+      buildSources: [
+        { sourceUrl: 'https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz',
+          sha256: '603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a', root: 'openssl-3.5.9' },
+        { sourceUrl: 'https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.49/pcre2-10.49.tar.gz',
+          sha256: '929f0b20e62879252a15886b06c89f1edef61a363cbd5826fb041080a5e557ae', root: 'pcre2-10.49' }
+      ]
     }];
   }
   if (platform === 'win32' && arch === 'x64') {
@@ -48,6 +61,12 @@ export function availableArtifacts(platform = process.platform, arch = process.a
       sourceUrl: 'https://downloads.php.net/~windows/releases/archives/php-8.5.12-1-nts-Win32-vs17-x64.zip',
       sha256: '2a36a2edcb7a5b9252f638fd5e4cf84d7f6e066092654220dc0b63e5cf4e9723',
       archive: 'zip', root: '', executable: 'php.exe', license: 'PHP-3.01'
+    }, {
+      id: 'nginx-1.30.6', name: 'nginx', version: '1.30.6',
+      sourceUrl: 'https://nginx.org/download/nginx-1.30.6.zip',
+      sha256: 'c6ee35edb0a861063323f709192ae50d1eefaf2ea7d00678bd2b22d8542dc61e',
+      archive: 'zip', root: 'nginx-1.30.6', executable: 'nginx.exe',
+      license: 'nginx: BSD-2-Clause; bundled OpenSSL, PCRE2 and zlib licenses in docs/'
     }];
   }
   return [];
@@ -139,7 +158,11 @@ async function downloadOfficial(url: string, target: string): Promise<void> {
   const parsed = new URL(url);
   if (parsed.protocol !== 'https:' || !(
     ['nodejs.org', 'downloads.php.net'].includes(parsed.hostname) ||
-    (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/php/frankenphp/releases/download/'))
+    (parsed.hostname === 'nginx.org' && parsed.pathname.startsWith('/download/nginx-')) ||
+    (parsed.hostname === 'github.com' && [
+      '/php/frankenphp/releases/download/', '/openssl/openssl/releases/download/',
+      '/PCRE2Project/pcre2/releases/download/'
+    ].some(prefix => parsed.pathname.startsWith(prefix)))
   )) {
     throw new Error('Runtime source must be an official HTTPS download.');
   }
@@ -169,6 +192,55 @@ async function sha256(file: string): Promise<string> {
   return hash.digest('hex');
 }
 
+async function buildMacNginx(archive: string, output: string, artifact: RuntimeArtifact,
+  download: (url: string, target: string) => Promise<void>): Promise<void> {
+  if (process.platform !== 'darwin' || process.arch !== 'arm64' || artifact.name !== 'nginx' ||
+    artifact.buildSources?.length !== 2 || !artifact.buildSources.every(source => /^[a-f0-9]{64}$/.test(source.sha256))) {
+    throw new Error('Unsupported nginx source build.');
+  }
+  const build = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'mandau-nginx-build-'));
+  try {
+    const source = path.join(build, 'nginx');
+    await mkdir(source);
+    await extractTar(archive, source, artifact);
+    const dependencies: string[] = [];
+    for (const [index, dependency] of artifact.buildSources.entries()) {
+      const downloaded = path.join(build, `dependency-${index}.tar.gz`);
+      await download(dependency.sourceUrl, downloaded);
+      if ((await stat(downloaded)).size > MAX_DOWNLOAD_BYTES || await sha256(downloaded) !== dependency.sha256) {
+        throw new Error('nginx build dependency checksum mismatch; nothing was installed.');
+      }
+      const directory = path.join(build, `dependency-${index}`);
+      await mkdir(directory);
+      await extractTar(downloaded, directory, { ...artifact, root: dependency.root });
+      dependencies.push(directory);
+    }
+    const env: NodeJS.ProcessEnv = { ...process.env, PATH: '/usr/bin:/bin:/usr/sbin:/sbin', MACOSX_DEPLOYMENT_TARGET: '14.0' };
+    for (const key of ['LDFLAGS', 'CPPFLAGS', 'CPATH', 'LIBRARY_PATH', 'DYLD_LIBRARY_PATH', 'DYLD_FALLBACK_LIBRARY_PATH', 'PKG_CONFIG_PATH']) delete env[key];
+    try {
+      await execute(path.join(source, 'configure'), [
+        '--with-http_ssl_module', `--with-openssl=${dependencies[0]}`,
+        '--with-openssl-opt=no-shared no-tests no-apps', `--with-pcre=${dependencies[1]}`,
+        '--without-http_gzip_module', '--without-http_fastcgi_module', '--without-http_uwsgi_module',
+        '--without-http_scgi_module', '--without-http_grpc_module', '--without-http_memcached_module', '--without-http-cache'
+      ], { cwd: source, env, timeout: 120_000, maxBuffer: 4 * 1024 * 1024 });
+      await execute('/usr/bin/make', ['-s', '-j4'], { cwd: source, env, timeout: 900_000, maxBuffer: 4 * 1024 * 1024 });
+    } catch (error) {
+      throw new Error(`nginx could not be built. Install the Apple Command Line Tools and retry. ${(error as Error).message}`);
+    }
+    const binary = path.join(output, 'bin', 'nginx');
+    await mkdir(path.dirname(binary));
+    await copyFile(path.join(source, 'objs', 'nginx'), binary);
+    await copyFile(path.join(source, 'LICENSE'), path.join(output, 'nginx.LICENSE'));
+    await copyFile(path.join(dependencies[0], 'LICENSE.txt'), path.join(output, 'OpenSSL.LICENSE'));
+    await copyFile(path.join(dependencies[1], 'LICENCE.md'), path.join(output, 'PCRE2.LICENCE'));
+    const { stdout } = await execute('/usr/bin/otool', ['-L', binary], { timeout: 5000 });
+    if (!stdout.includes('/usr/lib/libSystem.B.dylib') || stdout.split('\n').slice(1).some(line => line.trim() && !line.includes('/usr/lib/libSystem.B.dylib'))) {
+      throw new Error('Built nginx has an unexpected dynamic dependency.');
+    }
+  } finally { await rm(build, { recursive: true, force: true }); }
+}
+
 export class RuntimeInstaller {
   private readonly pending = new Map<string, Promise<InstalledRuntime>>();
 
@@ -177,7 +249,8 @@ export class RuntimeInstaller {
     private readonly download: (url: string, target: string) => Promise<void> = downloadOfficial,
     private readonly verify: (binary: string, artifact: RuntimeArtifact) => Promise<void> = async (binary, artifact) => {
       try {
-        const { stdout, stderr } = await execute(binary, artifact.archive === 'binary' ? ['version'] : ['--version'], { timeout: 5000, windowsHide: true });
+        const args = artifact.name === 'nginx' ? ['-v'] : artifact.archive === 'binary' ? ['version'] : ['--version'];
+        const { stdout, stderr } = await execute(binary, args, { timeout: 5000, windowsHide: true });
         if (!(stdout + stderr).includes(artifact.version)) throw new Error('Downloaded runtime reports an unexpected version.');
         if (artifact.archive === 'binary') {
           // The macOS standalone server also provides the project's PHP CLI.
@@ -234,7 +307,8 @@ export class RuntimeInstaller {
       if ((await stat(archive)).size > MAX_DOWNLOAD_BYTES || (await sha256(archive)) !== artifact.sha256) {
         throw new Error('Runtime checksum mismatch; no version was installed.');
       }
-      if (artifact.archive === 'zip') await extractZip(archive, content, artifact);
+      if (artifact.buildSources) await buildMacNginx(archive, content, artifact, this.download);
+      else if (artifact.archive === 'zip') await extractZip(archive, content, artifact);
       else if (artifact.archive === 'tar.gz') await extractTar(archive, content, artifact);
       else await rename(archive, path.join(content, artifact.executable));
       const binary = path.join(content, ...artifact.executable.split('/'));

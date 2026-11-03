@@ -22,6 +22,7 @@ export interface RuntimeArtifact {
   root: string;
   executable: string;
   license: string;
+  buildSources?: { sourceUrl: string; sha256: string; root: string }[];
 }
 
 export interface InstalledRuntime {
@@ -40,6 +41,7 @@ export interface RuntimeOption {
   sourceUrl: string;
   license: string;
   installed: boolean;
+  buildSources?: RuntimeArtifact['buildSources'];
 }
 
 export interface AppInfo {
