@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { AppInfo, DesktopApi, HostsPlanSummary, NginxPlan, PreviewStatus, RuntimeOption, RuntimeStatus, Site } from '../shared/types';
+import type { AppInfo, DesktopApi, HostsPlanSummary, NginxPlan, NginxStatus, PreviewStatus, RuntimeOption, RuntimeStatus, Site } from '../shared/types';
 import brandIcon from '../../assets/mandaustack-icon.svg';
 import './style.css';
 
@@ -16,6 +16,7 @@ function App(): React.JSX.Element {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [hostsPlan, setHostsPlan] = useState<HostsPlanSummary | null>(null);
   const [nginxPlan, setNginxPlan] = useState<NginxPlan | null>(null);
+  const [nginxStatus, setNginxStatus] = useState<NginxStatus | null>(null);
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -26,16 +27,18 @@ function App(): React.JSX.Element {
   const [busyNginx, setBusyNginx] = useState(false);
 
   useEffect(() => {
-    void Promise.all([window.mandaustack.listSites(), window.mandaustack.detectRuntimes(), window.mandaustack.getInfo(), window.mandaustack.listPreviews(), window.mandaustack.listManagedRuntimes()])
-      .then(([loadedSites, loadedRuntimes, loadedInfo, activePreviews, availableRuntimes]) => {
+    void Promise.all([window.mandaustack.listSites(), window.mandaustack.detectRuntimes(), window.mandaustack.getInfo(), window.mandaustack.listPreviews(), window.mandaustack.listManagedRuntimes(), window.mandaustack.nginxStatus()])
+      .then(([loadedSites, loadedRuntimes, loadedInfo, activePreviews, availableRuntimes, currentNginx]) => {
         setSites(loadedSites);
         setRuntimes(loadedRuntimes);
         setInfo(loadedInfo);
         setPreviews(activePreviews);
         setManagedRuntimes(availableRuntimes);
+        setNginxStatus(currentNginx);
       }).catch(showError);
     const interval = window.setInterval(() => {
       void window.mandaustack.listPreviews().then(setPreviews).catch(showError);
+      void window.mandaustack.nginxStatus().then(setNginxStatus).catch(showError);
     }, 3000);
     return () => window.clearInterval(interval);
   }, []);
@@ -127,6 +130,21 @@ function App(): React.JSX.Element {
     } finally { setBusyNginx(false); }
   }
 
+  async function toggleNginx(): Promise<void> {
+    setBusyNginx(true);
+    setError('');
+    try {
+      setNginxStatus(nginxStatus?.running ? await window.mandaustack.stopNginx() : await window.mandaustack.startNginx());
+    } catch (reason) { showError(reason); }
+    finally {
+      try {
+        setNginxStatus(await window.mandaustack.nginxStatus());
+        setNginxPlan(await window.mandaustack.previewNginx());
+      } catch (reason) { showError(reason); }
+      setBusyNginx(false);
+    }
+  }
+
   const filtered = sites.filter(site => `${site.name} ${site.path} ${site.domain}`.toLowerCase().includes(search.toLowerCase()));
 
   return <div className="layout">
@@ -137,7 +155,7 @@ function App(): React.JSX.Element {
       <div className="nav-heading second">ENVIRONMENT</div>
       <div className="nav-item">⌘ <span>Local runtimes</span></div>
       <div className="nav-item muted">◈ <span>Services · coming later</span></div>
-      <div className="sidebar-bottom"><div><span className="status-dot"/> Local workspace <small>v{info?.version || '0.1.8'}</small></div><p>© {new Date().getFullYear()} MandauStack Contributors<br/>MIT License</p></div>
+      <div className="sidebar-bottom"><div><span className="status-dot"/> Local workspace <small>v{info?.version || '0.1.9'}</small></div><p>© {new Date().getFullYear()} MandauStack Contributors<br/>MIT License</p></div>
     </aside>
     <main>
       <header><div><span className="eyebrow">YOUR DEVELOPMENT SPACE</span><h1>Projects</h1><p>One place for your local development projects.</p></div><button className="primary" onClick={() => void linkSite()} disabled={busy}>+ Link existing project</button></header>
@@ -149,12 +167,16 @@ function App(): React.JSX.Element {
            {info.caTrust?.installedByMandauStack && <button className="secondary" disabled={busyCa} onClick={() => void changeCaTrust(true)}>{busyCa ? 'Updating Keychain…' : 'Remove MandauStack CA trust'}</button>}
          </>}
          <button className="secondary" disabled={busyHosts} onClick={() => void window.mandaustack.previewHosts().then(setHostsPlan).catch(showError)}>Review .test hosts plan</button>{hostsPlan && <p role="status">{hostsPlan.changed ? `Proposed in ${hostsPlan.file}: ${hostsPlan.added.map(domain => `+ ${domain}`).join(', ') || 'no additions'}; ${hostsPlan.removed.map(domain => `- ${domain}`).join(', ') || 'no removals'}.` : `${hostsPlan.file}: no changes needed.`} {info?.platform === 'darwin' ? 'Apply requires macOS administrator authorization.' : 'Preview only; Windows installation is not yet supported.'}</p>}{hostsPlan?.changed && info?.platform === 'darwin' && <button className="secondary" disabled={busyHosts} onClick={() => void changeHosts(false)}>{busyHosts ? 'Updating…' : 'Install reviewed .test entries'}</button>}{hostsPlan?.restoreAvailable && info?.platform === 'darwin' && <button className="secondary" disabled={busyHosts} onClick={() => void changeHosts(true)}>Restore previous hosts file</button>}</div></div>
-      {info?.gateway && <section className="runtime-section"><div className="section-heading"><div><h2>nginx configuration preview</h2><p>Review a local TLS reverse-proxy configuration. Preparation validates it with an existing nginx installation; it does not start nginx or bind a port.</p></div></div>
+      {info?.gateway && <section className="runtime-section"><div className="section-heading"><div><h2>Local nginx</h2><p>Review and validate a local TLS reverse proxy, then start it on a loopback development port using an existing nginx installation.</p></div></div>
         <button className="secondary" disabled={busyNginx} onClick={() => void window.mandaustack.previewNginx().then(setNginxPlan).catch(showError)}>Review nginx configuration</button>
-        {nginxPlan && <div className="nginx-plan"><p role="status">{nginxPlan.changed ? 'Changes proposed' : 'Configuration already prepared'} for {nginxPlan.file} on 127.0.0.1:{nginxPlan.listenPort}. No listener has been started.</p>
+        {nginxStatus?.running && <button className="secondary" disabled={busyNginx} onClick={() => void toggleNginx()}>{busyNginx ? 'Stopping nginx…' : 'Stop managed nginx'}</button>}
+        {nginxStatus?.error && <p role="alert">nginx: {nginxStatus.error}</p>}
+        {nginxPlan && <div className="nginx-plan"><p role="status">{nginxPlan.changed ? 'Changes proposed' : 'Configuration prepared'} for {nginxPlan.file} on 127.0.0.1:{nginxPlan.listenPort}. {nginxStatus?.running ? 'nginx is running.' : 'nginx is not running.'}</p>
           <details><summary>Show proposed configuration</summary><pre>{nginxPlan.configuration}</pre></details>
-          {info.platform === 'darwin' && nginxPlan.changed && <button className="secondary" disabled={busyNginx} onClick={() => void changeNginx(false)}>{busyNginx ? 'Validating…' : 'Validate and prepare reviewed configuration'}</button>}
-          {info.platform === 'darwin' && nginxPlan.restoreAvailable && <button className="secondary" disabled={busyNginx} onClick={() => void changeNginx(true)}>Restore previous nginx configuration</button>}
+          {info.platform === 'darwin' && nginxPlan.changed && <button className="secondary" disabled={busyNginx || Boolean(nginxStatus?.running)} onClick={() => void changeNginx(false)}>{busyNginx ? 'Validating…' : 'Validate and prepare reviewed configuration'}</button>}
+          {info.platform === 'darwin' && !nginxPlan.changed && !nginxStatus?.running && <button className="secondary" disabled={busyNginx} onClick={() => void toggleNginx()}>{busyNginx ? 'Checking HTTPS…' : 'Start managed nginx'}</button>}
+          {info.platform === 'darwin' && nginxPlan.restoreAvailable && <button className="secondary" disabled={busyNginx || Boolean(nginxStatus?.running)} onClick={() => void changeNginx(true)}>Restore previous nginx configuration</button>}
+          {nginxStatus?.running && <p>HTTPS test: https://nama-proyek.test:{nginxStatus.port}/ (use --resolve and --cacert until system DNS and trust are configured).</p>}
         </div>}
       </section>}
       <section className="section-heading"><div><h2>Your projects</h2><p>{sites.length} linked {sites.length === 1 ? 'project' : 'projects'}</p></div><input aria-label="Search projects" placeholder="Search projects…" value={search} onChange={event => setSearch(event.target.value)}/></section>

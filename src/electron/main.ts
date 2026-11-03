@@ -7,6 +7,7 @@ import { planHosts, systemHostsPath } from '../core/hosts';
 import { HttpsGateway } from '../core/https-gateway';
 import { MacCaTrust } from '../core/mac-ca-trust';
 import { NginxConfigManager } from '../core/nginx-config';
+import { NginxService } from '../core/nginx-service';
 import { authorizedHostsOperation } from '../core/mac-hosts';
 import { PreviewManager } from '../core/previews';
 import { availableArtifacts, RuntimeInstaller } from '../core/runtime-installer';
@@ -26,6 +27,7 @@ const previews = new PreviewManager(undefined, async () => {
 });
 const gateway = new HttpsGateway(dataDirectory(), () => store.list(), previews);
 const nginx = new NginxConfigManager(dataDirectory());
+const nginxService = new NginxService(nginx);
 let updatingNginx = false;
 let caTrust: MacCaTrust | null = null;
 let updatingCaTrust = false;
@@ -64,6 +66,12 @@ function nginxPreview() {
   const status = gateway.getStatus();
   if (!status) throw new Error('Start the HTTPS gateway before preparing nginx.');
   return nginx.plan(store.list(), status.port);
+}
+
+function localNginxBinary(): string {
+  const binary = ['/opt/homebrew/bin/nginx', '/usr/local/bin/nginx'].find(candidate => fs.existsSync(candidate));
+  if (!binary) throw new Error('Install nginx locally to validate and run the configuration.');
+  return binary;
 }
 
 async function managedRuntimes(): Promise<RuntimeOption[]> {
@@ -141,6 +149,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('nginx:preview', nginxPreview);
   ipcMain.handle('nginx:prepare', async (_event, expected: unknown, expectedConfiguration: unknown) => {
     if (process.platform !== 'darwin') throw new Error('nginx configuration preparation is available on macOS only.');
+    if (nginxService.status().running) throw new Error('Stop managed nginx before replacing its configuration.');
     const preview = nginxPreview();
     if (typeof expected !== 'string' || expected !== preview.originalSha256 ||
       typeof expectedConfiguration !== 'string' || expectedConfiguration !== preview.configurationSha256) {
@@ -149,18 +158,35 @@ app.whenReady().then(async () => {
     if (updatingNginx) throw new Error('A nginx configuration operation is already in progress.');
     updatingNginx = true;
     try {
-      const binary = ['/opt/homebrew/bin/nginx', '/usr/local/bin/nginx'].find(candidate => fs.existsSync(candidate));
-      if (!binary) throw new Error('Install nginx locally to validate the staged configuration before applying it.');
-      await nginx.prepare(store.list(), gateway.getStatus()!.port, expected, expectedConfiguration, binary);
+      await nginx.prepare(store.list(), gateway.getStatus()!.port, expected, expectedConfiguration, localNginxBinary());
       return nginxPreview();
     } finally { updatingNginx = false; }
   });
   ipcMain.handle('nginx:restore', (_event, expected: unknown) => {
     if (process.platform !== 'darwin') throw new Error('nginx configuration recovery is available on macOS only.');
+    if (nginxService.status().running) throw new Error('Stop managed nginx before restoring its configuration.');
     if (updatingNginx) throw new Error('A nginx configuration operation is already in progress.');
     if (typeof expected !== 'string') throw new Error('Invalid nginx recovery checksum.');
     nginx.restore(expected);
     return nginxPreview();
+  });
+  ipcMain.handle('nginx:status', () => nginxService.status());
+  ipcMain.handle('nginx:start', async () => {
+    if (process.platform !== 'darwin') throw new Error('Managed nginx is available on macOS only.');
+    if (updatingNginx) throw new Error('A nginx configuration operation is already in progress.');
+    const status = gateway.getStatus();
+    if (!status) throw new Error('The HTTPS gateway is unavailable.');
+    updatingNginx = true;
+    try { return await nginxService.start(store.list(), status.port, status.caPath, localNginxBinary()); }
+    finally { updatingNginx = false; }
+  });
+  ipcMain.handle('nginx:stop', async () => {
+    if (updatingNginx) throw new Error('A nginx operation is already in progress.');
+    updatingNginx = true;
+    try {
+      await nginxService.stop();
+      return nginxService.status();
+    } finally { updatingNginx = false; }
   });
   ipcMain.handle('sites:list', () => store.list());
   ipcMain.handle('sites:chooseDirectory', async () => {
@@ -241,7 +267,7 @@ let stopping = false;
 app.on('before-quit', event => {
   if (stopping) return;
   event.preventDefault();
-  void Promise.allSettled([previews.stopAll(), gateway.stop()]).finally(() => {
+  void Promise.allSettled([nginxService.stop(), previews.stopAll(), gateway.stop()]).finally(() => {
     stopping = true;
     app.quit();
   });

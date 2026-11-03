@@ -78,6 +78,8 @@ export interface NginxPlan {
   listenPort: number;
 }
 
+export interface NginxStatus { running: boolean; port: number | null; error: string | null }
+
 export interface DesktopApi {
   getInfo(): Promise<AppInfo>;
   listSites(): Promise<Site[]>;
@@ -93,6 +95,9 @@ export interface DesktopApi {
   previewNginx(): Promise<NginxPlan>;
   prepareNginx(expectedSha256: string, expectedConfigurationSha256: string): Promise<NginxPlan>;
   restoreNginx(expectedSha256: string): Promise<NginxPlan>;
+  nginxStatus(): Promise<NginxStatus>;
+  startNginx(): Promise<NginxStatus>;
+  stopNginx(): Promise<NginxStatus>;
   detectRuntimes(): Promise<RuntimeStatus[]>;
   listManagedRuntimes(): Promise<RuntimeOption[]>;
   installRuntime(id: string): Promise<RuntimeOption[]>;
