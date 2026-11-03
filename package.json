@@ -1,6 +1,6 @@
 {
   "name": "mandaustack",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "A free, open-source local development environment for macOS and Windows",
   "author": "MandauStack Contributors",
@@ -22,6 +22,7 @@
     "package:win": "npm run build && npm run icons && electron-builder --win"
   },
   "dependencies": {
+    "node-forge": "^1.4.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "tar": "^7.5.22",
@@ -30,6 +31,7 @@
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^26.6.6",
+    "@types/node-forge": "^1.3.14",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.2.3",
     "@types/yauzl": "^3.4.0",

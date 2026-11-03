@@ -45,6 +45,8 @@ export interface RuntimeOption {
 export interface AppInfo {
   version: string;
   dataDirectory: string;
+  gateway: { port: number; caPath: string } | null;
+  gatewayError: string | null;
 }
 
 export interface PreviewStatus {

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import path from 'node:path';
 import { dataDirectory } from '../core/paths';
+import { HttpsGateway } from '../core/https-gateway';
 import { PreviewManager } from '../core/previews';
 import { availableArtifacts, RuntimeInstaller } from '../core/runtime-installer';
 import { detectRuntimes, findPhpBinary } from '../core/runtimes';
@@ -17,6 +18,8 @@ const previews = new PreviewManager(undefined, async () => {
   const managed = php ? await installer.installed(php) : null;
   return managed ? { binary: managed.binary, mode: php?.archive === 'binary' ? 'frankenphp' as const : 'php' as const } : findPhpBinary();
 });
+const gateway = new HttpsGateway(dataDirectory(), () => store.list(), previews);
+let gatewayError: string | null = null;
 
 async function managedRuntimes(): Promise<RuntimeOption[]> {
   return Promise.all(artifacts.map(async artifact => ({
@@ -60,8 +63,12 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
-  ipcMain.handle('app:info', () => ({ version: app.getVersion(), dataDirectory: dataDirectory() }));
+app.whenReady().then(async () => {
+  try { await gateway.start(); }
+  catch (error) { gatewayError = (error as Error).message; }
+  ipcMain.handle('app:info', () => ({
+    version: app.getVersion(), dataDirectory: dataDirectory(), gateway: gateway.getStatus(), gatewayError
+  }));
   ipcMain.handle('sites:list', () => store.list());
   ipcMain.handle('sites:chooseDirectory', async () => {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
@@ -114,7 +121,7 @@ let stopping = false;
 app.on('before-quit', event => {
   if (stopping) return;
   event.preventDefault();
-  void previews.stopAll().finally(() => {
+  void Promise.allSettled([previews.stopAll(), gateway.stop()]).finally(() => {
     stopping = true;
     app.quit();
   });
