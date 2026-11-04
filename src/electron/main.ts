@@ -13,6 +13,7 @@ import { PreviewManager } from '../core/previews';
 import { availableArtifacts, RuntimeInstaller } from '../core/runtime-installer';
 import { detectRuntimes, findPhpBinary } from '../core/runtimes';
 import { SiteStore } from '../core/sites';
+import { managedWindowsPhpArguments } from '../core/windows-php';
 import type { RuntimeOption } from '../shared/types';
 
 app.setName('MandauStack');
@@ -23,7 +24,8 @@ const installer = new RuntimeInstaller(path.join(dataDirectory(), 'runtimes'));
 const previews = new PreviewManager(undefined, async () => {
   const php = artifacts.find(artifact => artifact.name === 'PHP');
   const managed = php ? await installer.installed(php) : null;
-  return managed ? { binary: managed.binary, mode: php?.archive === 'binary' ? 'frankenphp' as const : 'php' as const } : findPhpBinary();
+  return managed ? { binary: managed.binary, mode: php?.archive === 'binary' ? 'frankenphp' as const : 'php' as const,
+    startupArgs: process.platform === 'win32' ? managedWindowsPhpArguments(managed.binary) : [] } : findPhpBinary();
 });
 const gateway = new HttpsGateway(dataDirectory(), () => store.list(), previews);
 const nginx = new NginxConfigManager(dataDirectory());

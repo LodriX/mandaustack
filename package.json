@@ -1,6 +1,6 @@
 {
   "name": "mandaustack",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "private": true,
   "description": "A free, open-source local development environment for macOS and Windows",
   "author": "MandauStack Contributors",
@@ -14,12 +14,13 @@
     "build:main": "tsc -p tsconfig.main.json",
     "build": "npm run typecheck && npm run build:main && vite build",
     "typecheck": "tsc -p tsconfig.renderer.json --noEmit && tsc -p tsconfig.main.json --noEmit",
-    "test": "npm run build:main && node --test dist-electron/core/*.test.js",
+    "test": "npm run build:main && node --test dist-electron/core/*.test.js scripts/*.test.mjs",
     "start": "electron .",
     "cli": "npm run build:main && node dist-electron/cli.js",
     "icons": "node scripts/generate-icons.mjs",
     "package:mac": "npm run build && npm run icons && electron-builder --mac",
-    "package:win": "npm run build && npm run icons && electron-builder --win"
+    "package:win": "npm run build && npm run icons && electron-builder --win",
+    "package:win:signed": "npm run build && npm run icons && electron-builder --win --config.forceCodeSigning=true --config.directories.output=release/signed && node scripts/verify-windows-signatures.mjs release/signed"
   },
   "dependencies": {
     "node-forge": "^1.4.2",

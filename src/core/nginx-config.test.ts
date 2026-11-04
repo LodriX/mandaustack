@@ -14,7 +14,7 @@ import { PreviewManager } from './previews';
 const site = (domain: string): Site => ({ id: domain, name: domain, path: '/project', domain, createdAt: '' });
 
 test('renders deterministic, loopback-only TLS sites and rejects unsafe input', () => {
-  const directory = '/tmp/Mandau Stack';
+  const directory = path.join(os.tmpdir(), 'Mandau Stack');
   const result = renderNginxConfig(directory, [site('zulu.test'), site('alpha.test')], 32222);
   assert.match(result, /listen 127\.0\.0\.1:8443 ssl default_server/);
   assert.match(result, /server_name alpha\.test;[\s\S]+server_name zulu\.test;/);
@@ -22,11 +22,11 @@ test('renders deterministic, loopback-only TLS sites and rejects unsafe input', 
   assert.match(result, /if \(\$ssl_server_name != \$host\) \{ return 421; \}/);
   assert.match(result, /proxy_ssl_name \$host;/);
   assert.match(result, /proxy_pass https:\/\/127\.0\.0\.1:32222;/);
-  assert.match(result, /ssl_certificate "\/tmp\/Mandau Stack\/certificates\/alpha\.test\.pem";/);
+  assert.ok(result.includes(`ssl_certificate ${JSON.stringify(path.join(directory, 'certificates', 'alpha.test.pem'))};`));
   assert.equal(result, renderNginxConfig(directory, [site('alpha.test'), site('zulu.test')], 32222));
   assert.throws(() => renderNginxConfig(directory, [site('alpha.test; return 200')], 32222), /Invalid or duplicate/);
   assert.throws(() => renderNginxConfig(directory, [site('alpha.test'), site('alpha.test')], 32222), /Invalid or duplicate/);
-  assert.throws(() => renderNginxConfig('/tmp/unsafe$variable', [], 32222), /Unsafe/);
+  assert.throws(() => renderNginxConfig(path.join(directory, 'unsafe$variable'), [], 32222), /Unsafe/);
   assert.throws(() => renderNginxConfig(directory, [], 32222, 443), /port/);
   assert.throws(() => renderNginxConfig(directory, [], 32222, 32222), /port/);
 });

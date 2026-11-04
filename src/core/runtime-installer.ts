@@ -11,15 +11,12 @@ import { promisify } from 'node:util';
 import * as tar from 'tar';
 import yauzl from 'yauzl';
 import type { InstalledRuntime, RuntimeArtifact } from '../shared/types';
+import { laravelPhpExtensions, managedWindowsPhpArguments } from './windows-php';
 
 const execute = promisify(execFile);
 const MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024;
 const MAX_EXTRACTED_BYTES = 600 * 1024 * 1024;
-const FRANKENPHP_EXTENSIONS = [
-  'bcmath', 'ctype', 'curl', 'dom', 'fileinfo', 'filter', 'hash', 'intl',
-  'mbstring', 'openssl', 'PDO', 'pdo_mysql', 'pdo_sqlite', 'session',
-  'tokenizer', 'xml', 'zip'
-];
+const FRANKENPHP_EXTENSIONS = laravelPhpExtensions;
 
 // Pinned official artifacts. Never accept arbitrary URLs from renderer IPC.
 export function availableArtifacts(platform = process.platform, arch = process.arch): RuntimeArtifact[] {
@@ -263,6 +260,14 @@ export class RuntimeInstaller {
           throw new Error(`PHP could not start. The Microsoft Visual C++ Redistributable 2015–2022 x64 may be required. ${(error as Error).message}`);
         }
         throw error;
+      }
+      if (artifact.name === 'PHP' && process.platform === 'win32') {
+        const script = `foreach (${JSON.stringify(laravelPhpExtensions)} as $extension) { if (!extension_loaded($extension)) { fwrite(STDERR, 'Missing extension: '.$extension.PHP_EOL); exit(1); } }`;
+        try {
+          await execute(binary, [...managedWindowsPhpArguments(binary), '-r', script], { timeout: 10_000, windowsHide: true });
+        } catch (error) {
+          throw new Error(`Windows PHP is missing extensions required by Laravel. ${(error as Error).message}`);
+        }
       }
     }
   ) {}

@@ -52,6 +52,16 @@ test('starts PHP on loopback, serves a project, and stops without deleting files
   assert.ok(fs.existsSync(path.join(root, 'secret.txt')));
 });
 
+test('uses runtime-specific PHP startup options for a preview', { skip: !phpAvailable }, async () => {
+  const { root, site } = fixture();
+  fs.writeFileSync(path.join(root, 'index.php'), '<?php echo ini_get("display_errors");');
+  const manager = new PreviewManager(undefined, async () => ({ binary: 'php', mode: 'php',
+    startupArgs: ['-n', '-d', 'display_errors=1'] }));
+  managers.push(manager);
+  const preview = await manager.start(site);
+  assert.equal(await (await fetch(preview.url)).text(), '1');
+});
+
 test('reports missing PHP clearly and does not claim a running preview', async () => {
   const { root, site } = fixture();
   fs.writeFileSync(path.join(root, 'index.php'), '<?php');

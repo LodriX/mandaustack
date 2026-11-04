@@ -46,7 +46,8 @@ test('backs up and atomically applies only a reviewed plan to a copy, rejecting 
     const backup = result.backupPath;
     assert.ok(backup);
     assert.equal(fs.readFileSync(backup, 'utf8'), original);
-    assert.equal(fs.statSync(backup).mode & 0o077, 0);
+    // POSIX mode bits do not validate Windows ACLs; system hosts writes remain disabled there.
+    if (process.platform !== 'win32') assert.equal(fs.statSync(backup).mode & 0o077, 0);
     assert.throws(() => applyHostsFile(file, backupDir, [], plan.originalSha256), /changed since the plan/);
     assert.equal(fs.readFileSync(file, 'utf8'), plan.content);
     assert.equal(fs.readdirSync(backupDir).length, 1);

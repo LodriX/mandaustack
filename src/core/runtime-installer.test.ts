@@ -14,6 +14,7 @@ import { NginxConfigManager } from './nginx-config';
 import { NginxService } from './nginx-service';
 import { HttpsGateway } from './https-gateway';
 import { availableArtifacts, RuntimeInstaller } from './runtime-installer';
+import { laravelPhpExtensions, managedWindowsPhpArguments } from './windows-php';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }); });
@@ -224,6 +225,30 @@ test('installs official macOS PHP and serves a PHP project via its built-in serv
     const second = await preview.start({ id: 'other', name: 'other', path: fs.realpathSync(otherPath), domain: 'other.test', createdAt: new Date().toISOString() });
     assert.equal(await (await fetch(second.url)).text(), 'second-site');
     assert.equal(await (await fetch(running.url)).text(), 'php=8.5.12;intl=1');
+  } finally { await preview.stopAll(); }
+});
+
+test('installs official Windows PHP with Laravel extensions and serves an isolated preview', {
+  skip: process.platform !== 'win32' || !process.env.MANDAUSTACK_TEST_REMOTE_RUNTIME,
+  timeout: 240_000
+}, async () => {
+  const root = fixture();
+  const spec = availableArtifacts().find(item => item.name === 'PHP');
+  assert.ok(spec);
+  const installed = await new RuntimeInstaller(path.join(root, 'runtimes')).install(spec);
+  const flags = managedWindowsPhpArguments(installed.binary);
+  const check = `foreach (${JSON.stringify(laravelPhpExtensions)} as $extension) { if (!extension_loaded($extension)) { exit(1); } } echo 'ok';`;
+  assert.equal(execFileSync(installed.binary, [...flags, '-r', check], { encoding: 'utf8' }), 'ok');
+  const publicDir = path.join(root, 'site', 'public');
+  fs.mkdirSync(publicDir, { recursive: true });
+  fs.writeFileSync(path.join(publicDir, 'index.php'), '<?php echo PHP_VERSION . ":" . (int)extension_loaded("intl");');
+  fs.writeFileSync(path.join(root, 'site', 'secret.txt'), 'private-project-file');
+  const preview = new PreviewManager(undefined, async () => ({ binary: installed.binary, mode: 'php', startupArgs: flags }));
+  try {
+    const running = await preview.start({ id: 'site', name: 'site', path: fs.realpathSync(path.join(root, 'site')),
+      domain: 'site.test', createdAt: new Date().toISOString() });
+    assert.equal(await (await fetch(running.url)).text(), '8.5.12:1');
+    assert.notEqual(await (await fetch(new URL('secret.txt', running.url))).text(), 'private-project-file');
   } finally { await preview.stopAll(); }
 });
 

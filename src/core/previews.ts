@@ -8,7 +8,7 @@ import { findPhpBinary } from './runtimes';
 
 const execute = promisify(execFile);
 const HOST = '127.0.0.1';
-type PhpRuntime = string | { binary: string; mode: 'php' | 'frankenphp' };
+type PhpRuntime = string | { binary: string; mode: 'php' | 'frankenphp'; startupArgs?: string[] };
 
 export function documentRoot(site: Site): string {
   // A moved or replaced project directory must be relinked, not served from another path.
@@ -90,11 +90,12 @@ export class PreviewManager {
     } else runtime = await this.locatePhp();
     const binary = typeof runtime === 'string' ? runtime : runtime.binary;
     const mode = typeof runtime === 'string' ? 'php' : runtime.mode;
+    const startupArgs = typeof runtime === 'string' ? [] : runtime.startupArgs || [];
     const port = await availablePort();
     const url = `http://${HOST}:${port}/`;
     const args = mode === 'frankenphp'
-      ? ['php-server', '--listen', `${HOST}:${port}`, '--root', root]
-      : ['-S', `${HOST}:${port}`, '-t', root];
+      ? [...startupArgs, 'php-server', '--listen', `${HOST}:${port}`, '--root', root]
+      : [...startupArgs, '-S', `${HOST}:${port}`, '-t', root];
     const child = spawn(binary, args, {
       cwd: site.path,
       windowsHide: true,
