@@ -31,7 +31,7 @@ export function availableArtifacts(platform = process.platform, arch = process.a
     }, {
       id: 'frankenphp-1.13.4-php-8.5.12', name: 'PHP', version: '8.5.12',
       sourceUrl: 'https://github.com/php/frankenphp/releases/download/v1.13.4/frankenphp-mac-arm64',
-      sha256: '11ff0e0c3c2ae51a50ff4815d258a6775bb63e51718a34621e2fa8a3112c512d',
+      sha256: '8c767bc3b8d1bfac287748aff4d62ade240f7e2cd1984196e5d5a84fd3a47629',
       archive: 'binary', root: '', executable: 'frankenphp', license: 'FrankenPHP: MIT; PHP: PHP-3.01'
     }, {
       id: 'nginx-1.30.6', name: 'nginx', version: '1.30.6',

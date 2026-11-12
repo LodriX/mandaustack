@@ -27,12 +27,12 @@ Jangan menganggap rencana di dokumen mana pun sudah disetujui atau sudah diimple
 
 - MandauStack is a free, open-source local development environment for PHP and Laravel on macOS and Windows.
 - Desktop app: Electron, React, TypeScript, Vite. Core logic is plain TypeScript with `node --test` tests.
-- Supported targets: macOS 14+ Apple Silicon and Windows 10+ x64. Windows execution has not been fully verified.
-- Current release: **0.1.10 early preview**. Next planned release: **0.2.0** with a privileged nginx helper for browser-ready `https://project.test/` on port 443.
+- Supported targets: macOS 14+ Apple Silicon and Windows 10+ x64. Packaged smoke tests have run on both, but clean-machine install/uninstall and full Windows execution are not verified.
+- Current release: **0.1.10 early preview** is the public baseline. **0.1.11** is an unsigned internal Windows/macOS candidate. Next planned release: **0.2.0** with a privileged nginx helper for browser-ready `https://project.test/` on port 443.
 - Databases, cache, search, storage, broadcasting, mail capture, version switching, managed Composer, profiling, Tinker, and Xdebug are **not implemented** unless the current docs explicitly say otherwise. Do not imply support.
 - The product target and safety requirements are documented in `README.md` and `docs/runtime-matrix.md`.
 
-Ringkasnya: 0.1.10 adalah preview awal. Database dan layanan lain masih roadmap; jangan mengklaim fitur yang belum ada.
+Ringkasnya: 0.1.10 adalah baseline publik. 0.1.11 adalah kandidat internal unsigned untuk Windows dan macOS. Database dan layanan lain masih roadmap; jangan mengklaim fitur yang belum ada.
 
 ## 3. Setup and commands / Setup dan perintah
 
@@ -137,7 +137,7 @@ Keep entries concise. Do not include secrets, private paths that are not needed,
 ## 10. Current focus / Fokus saat ini
 
 - Finish the 0.2.0 plan for a permanent privileged helper that serves browser-ready `https://project.test/` on port 443, dual-stack on `127.0.0.1` and `[::1]`.
-- The plan is proposed and awaiting approval; no 0.2.0 implementation has started as of commit `0027f7d`.
+- The plan is proposed and awaiting approval; no 0.2.0 implementation has started as of commit `026a2ad`.
 - Port 80 and HTTP-to-HTTPS redirects are deferred because Herd/Valet may occupy port 80. Windows keeps the port-8443 fallback for now.
 - Database management is not implemented; projects may use an externally managed database through their own configuration.
 - See [`docs/progress.md`](docs/progress.md) for the live snapshot and next move.

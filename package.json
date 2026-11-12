@@ -23,7 +23,7 @@
     "package:win:signed": "npm run build && npm run icons && electron-builder --win --config.forceCodeSigning=true --config.directories.output=release/signed && node scripts/verify-windows-signatures.mjs release/signed"
   },
   "dependencies": {
-    "node-forge": "^1.4.2",
+    "node-forge": "^1.4.3",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "tar": "^7.5.22",
