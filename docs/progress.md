@@ -1,15 +1,15 @@
 # Progress and handoff / Progres dan serah-terima
 
 **Last updated / Terakhir diperbarui:** 2026-11-12
-**Current commit / Commit saat ini:** `026a2ad` on `main`; the 0.1.11 Windows candidate was tested against baseline `06e20cc`, and the macOS candidate was verified against `026a2ad` plus local pin/dependency updates. This handoff covers both 0.1.11 candidates, signing preparation, and test results.
+**Current commit / Commit saat ini:** `204b731` on `main` contains the macOS 0.1.11 verification; the latest commit may be a documentation-only handoff update. The 0.1.11 Windows candidate was tested against baseline `06e20cc`, and the macOS candidate was verified against `026a2ad` plus the pin/dependency updates in `204b731`. This handoff covers both 0.1.11 candidates, signing preparation, and test results.
 **Purpose:** live status, decisions, and next actions. Stable rules and commands live in [`AGENTS.md`](../AGENTS.md).
 
 ## Snapshot / Ringkasan
 
 - **Version / Versi:** 0.1.11 unsigned **internal Windows and macOS candidate**; `package.json` is 0.1.11. The 0.1.10 early preview remains the last public baseline. Next planned milestone: 0.2.0.
 - **Current state / Status:** the unpacked Windows and packaged macOS 0.1.11 apps both passed isolated managed-PHP/HTTPS smoke tests; the macOS candidate also passed managed nginx 8443, restart persistence, and unlink checks. The macOS DMG is `release/MandauStack-0.1.11-arm64.dmg` (117 MB; SHA-256 `ad77e838c0154218b228ef5474bc6527a4be1b49899c277cf8cd8eebddcbb0a0`). Unsigned NSIS installation/uninstallation is untested; no signing identity or signed artifact exists. Windows nginx service integration is pending. The privileged macOS port-443 helper plan awaits approval; no 0.2.0 implementation has started.
-- **Local cleanup / Pembersihan lokal:** on 2026-11-03 the macOS per-user app data, two mounted DMGs, and generated build outputs (`release/`, `dist/`, `dist-electron/`, `node_modules/`) were removed to free disk space. Source code and git history remain intact. Dependencies and build outputs were restored for the 2026-11-12 macOS verification; the current working tree has uncommitted changes.
-- **Next action / Aksi berikutnya:** review and, if approved, commit the local macOS 0.1.11 verification changes. Then test `release/MandauStack Setup 0.1.11.exe` install/uninstall on a disposable Windows profile/VM and plan the isolated Windows nginx lifecycle. Public signing awaits publisher identity/certificate; macOS 0.2.0 work awaits plan approval.
+- **Local cleanup / Pembersihan lokal:** on 2026-11-03 the macOS per-user app data, two mounted DMGs, and generated build outputs (`release/`, `dist/`, `dist-electron/`, `node_modules/`) were removed to free disk space. Source code and git history remain intact. Dependencies and build outputs were restored for the 2026-11-12 macOS verification; the verification commit was pushed and the working tree is clean.
+- **Next action / Aksi berikutnya:** test `release/MandauStack Setup 0.1.11.exe` install/uninstall on a disposable Windows profile/VM and plan the isolated Windows nginx lifecycle. Public signing awaits publisher identity/certificate; macOS 0.2.0 work awaits plan approval.
 
 ## Completed / Selesai
 
@@ -26,7 +26,7 @@
 
 ## Active / Aktif
 
-- **macOS 0.1.11 local changes:** the FrankenPHP hash pin, `node-forge` 1.4.3, and documentation updates are present but uncommitted on `main` at `026a2ad`. Review the diff before committing; do not amend or push without explicit approval.
+- **macOS 0.1.11 verification:** the FrankenPHP hash pin, `node-forge` 1.4.3, and documentation updates are committed and pushed in `204b731`. No follow-up macOS candidate action is pending.
 - **0.2.0 plan:** browser-ready `https://<project>.test/` without a port, using a permanent privileged LaunchDaemon helper.
 - **Windows setup (2026-11-04):** dependencies installed; core and unpacked GUI tested with temporary data and managed PHP without modifying hosts, CA trust, or Laragon. Installer installation/uninstallation, an actual Laravel project and Windows nginx service on port 8443 remain unverified or unimplemented.
 - Planned flow: app (unprivileged) -> Unix socket `0600` -> root helper -> root-owned nginx with `nobody` workers -> `127.0.0.1:443` and `[::1]:443` -> HTTPS gateway -> PHP preview.
@@ -37,7 +37,6 @@
 
 ## Blocked / Terhambat
 
-- Review/approval of the uncommitted macOS 0.1.11 changes.
 - User approval for the 0.2.0 helper plan.
 - Full unsigned NSIS installation/uninstallation requires a disposable Windows profile or VM; do not test it on the main profile.
 - Windows release signing requires an authorized code-signing identity and a decision on certificate file, hardware token, or cloud integration. No qualifying identity was found in the current user's certificate store, and no electron-builder signing environment variables were configured on this Windows device; a signed build cannot be completed yet.
@@ -75,12 +74,11 @@
 
 ## Next move / Langkah berikutnya
 
-1. Review the uncommitted macOS 0.1.11 changes; if approved, commit them with a bilingual message such as `test: verifikasi macOS 0.1.11 / verify macOS 0.1.11`. Do not push without explicit approval.
-2. Windows integration: on a disposable Windows user profile/VM, run `release/MandauStack Setup 0.1.11.exe` and verify installation, startup, quit, uninstall and preservation of unrelated/project files; SmartScreen may warn because it is unsigned. Do not install the candidate into the main profile. Then open `src/core/nginx-service.ts` to plan and test Windows nginx lifecycle in isolated directories without adopting Laragon services. Do not enable Windows hosts or CA trust without ACL-safe, reversible implementations.
-3. Windows signing: choose the legal publisher and signing provider; after provisioning credentials outside the repo, start with `package.json` and `scripts/verify-windows-signatures.mjs`, run `npm run package:win:signed`, and test the signed installer on a clean Windows profile/VM. The local signature check cannot prove public trust or SmartScreen reputation.
-4. macOS when available: get approval for the 0.2.0 helper plan, then spike a root LaunchDaemon helper with nginx on `127.0.0.1:443` and `[::1]:443`.
-5. Implement the URL/preflight/dual-stack foundation, helper, installer, IPC, and setup UI only after approval; add tests and docs, bump the version to 0.2.0, and build the DMG.
-6. Update this file after each milestone.
+1. Windows integration: on a disposable Windows user profile/VM, run `release/MandauStack Setup 0.1.11.exe` and verify installation, startup, quit, uninstall and preservation of unrelated/project files; SmartScreen may warn because it is unsigned. Do not install the candidate into the main profile. Then open `src/core/nginx-service.ts` to plan and test Windows nginx lifecycle in isolated directories without adopting Laragon services. Do not enable Windows hosts or CA trust without ACL-safe, reversible implementations.
+2. Windows signing: choose the legal publisher and signing provider; after provisioning credentials outside the repo, start with `package.json` and `scripts/verify-windows-signatures.mjs`, run `npm run package:win:signed`, and test the signed installer on a clean Windows profile/VM. The local signature check cannot prove public trust or SmartScreen reputation.
+3. macOS when available: get approval for the 0.2.0 helper plan, then spike a root LaunchDaemon helper with nginx on `127.0.0.1:443` and `[::1]:443`.
+4. Implement the URL/preflight/dual-stack foundation, helper, installer, IPC, and setup UI only after approval; add tests and docs, bump the version to 0.2.0, and build the DMG.
+5. Update this file after each milestone.
 
 ## Verification log / Log verifikasi
 
@@ -98,6 +96,7 @@
 - **2026-11-12, macOS nginx source:** `MANDAUSTACK_TEST_NGINX_SOURCE=1 npm test` passed (45 total: 39 passed, 6 skipped, 0 failed); the pinned nginx/OpenSSL/PCRE2 source build took about 104 seconds.
 - **2026-11-12, macOS packaged smoke:** launched `release/mac-arm64/MandauStack.app/Contents/MacOS/MandauStack` with an isolated temporary HOME and DevTools IPC, installed managed Node.js 24.22.2 and FrankenPHP PHP 8.5.12, linked `smoke.test`, and fetched `INDEX_OK php=8.5.12 intl=1` over verified HTTPS. `/secret.txt` returned the index body, not `PRIVATE_MUST_NOT_BE_SERVED`; stopping the preview returned HTTP 503; restart preserved CA, registry, and managed PHP with no auto-started preview; managed nginx served the same project on `127.0.0.1:8443` and stopped cleanly; unlink preserved project files. `/etc/hosts` and `/etc/resolver/test` hashes were unchanged, no MandauStack Keychain CA was present, temporary data was removed, and no app-owned processes remained.
 - **2026-11-12, dependency audit:** `npm audit --omit=dev` initially reported one moderate production package (`node-forge` 1.4.2). After updating to 1.4.3, production audit reports 0 vulnerabilities; six moderate development-only advisories remain. `npm run typecheck` and `npm test` were rerun after the dependency change and passed.
+- **2026-11-12, repository:** committed the verified macOS changes as `204b731` and pushed `main` to `origin/main`; the working tree became clean. The handoff correction was committed separately as a documentation-only change.
 - Do not record a pass unless it was actually run. Include date, commit, command, and result.
 
 ## Handoff checklist / Checklist serah-terima
